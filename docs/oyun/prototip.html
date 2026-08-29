@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27><text y=%2713%27 font-size=%2713%27>🧟</text></svg>">
+<title>Zombi 3D — Prototip</title>
+<style>
+  /* Sanat yönü: The Division Mobile — koyu zemin, kehribar vurgu, köşeli
+     paneller, nadirlik renk şeridi. Ölçüler portrait telefon içindir. */
+  :root{
+    --zemin:#0c0e11; --panel:rgba(16,19,23,.88); --cizgi:rgba(190,205,220,.16);
+    --yazi:#dfe6ec; --sonuk:#8b959e; --vurgu:#e0a12a; --tehlike:#e0563a;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--zemin);overflow:hidden;
+    font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:var(--yazi);
+    -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+  #sahne{position:fixed;inset:0}
+
+  /* ── üst bant ── */
+  #ust{position:fixed;top:0;left:0;right:0;padding:10px 12px 8px;
+    background:linear-gradient(#0c0e11e6,#0c0e1100);pointer-events:none}
+  #bolumBilgi{font-size:15px;font-weight:700;letter-spacing:.09em}
+  #temaAd{font-size:10px;color:var(--sonuk);letter-spacing:.16em;margin-top:2px}
+  #dalgaDis{margin-top:7px;height:3px;background:#ffffff14;border-radius:2px;overflow:hidden}
+  #dalgaCubuk{height:100%;width:0;background:var(--vurgu);transition:width .25s}
+
+  /* ── sağ kenar düğmeleri ── */
+  #yanMenu{position:fixed;right:9px;top:58px;display:flex;flex-direction:column;gap:6px}
+  .yanBtn{width:36px;height:36px;background:var(--panel);color:var(--sonuk);
+    border:1px solid var(--cizgi);border-radius:3px;font-size:13px;font-weight:700;
+    letter-spacing:0;line-height:1;padding:0}
+  .yanBtn:active{background:#2a3038}
+  /* Mod rozeti metin taşır, o yüzden biraz geniş ve küçük punto. */
+  #btnMod{width:52px;font-size:9px;letter-spacing:.04em;color:var(--yazi)}
+  .yanBtn{position:relative}
+  .yanBtn.rozet::after{content:'';position:absolute;top:5px;right:5px;
+    width:8px;height:8px;border-radius:50%;background:var(--vurgu);
+    box-shadow:0 0 0 2px var(--panel)}
+
+  /* ── kadro kartları ── */
+  #kadro{position:fixed;left:0;right:0;bottom:0;padding:8px 8px 12px;
+    display:grid;grid-template-columns:repeat(4,1fr);gap:6px;
+    background:linear-gradient(#0c0e1100,#0c0e11f2 34%)}
+  .kart{background:var(--panel);border:1px solid var(--cizgi);border-radius:3px;
+    padding:5px 5px 6px;position:relative;overflow:hidden}
+  .kart::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2px;
+    background:var(--nadir)}
+  .kart.olu{opacity:.34;filter:grayscale(1)}
+  .kart.reload .mermiYazi{color:var(--vurgu)}
+  .kartUst{display:flex;justify-content:space-between;align-items:center;
+    font-size:9px;font-weight:700;letter-spacing:.06em;padding-left:4px}
+  .kart .build{font-size:11px}
+  .ikonKutu{position:relative;height:40px;margin:2px 0}
+  .kart .ikon{width:100%;height:100%;object-fit:contain;display:block}
+  /* Dairesel reload göstergesi: --p 0..1 arası JS'ten gelir. */
+  .kart.reload .ikonKutu::before{content:'';position:absolute;inset:2px;
+    border-radius:50%;background:conic-gradient(var(--vurgu) calc(var(--p,0)*360deg),
+    #ffffff10 0);-webkit-mask:radial-gradient(circle,transparent 58%,#000 60%);
+    mask:radial-gradient(circle,transparent 58%,#000 60%)}
+  .kart.reload .ikon{opacity:.35}
+  .kart.reload .ikonKutu::after{content:'↻';position:absolute;inset:0;
+    display:flex;align-items:center;justify-content:center;color:var(--vurgu);
+    font-size:17px;font-weight:700}
+  .can{height:4px;background:#ffffff14;border-radius:2px;overflow:hidden;margin-top:4px}
+  .can i{display:block;height:100%;width:100%;background:#57c15a;transition:width .12s}
+  .mermiYazi{font-size:11px;font-weight:700;color:var(--yazi);text-align:right;
+    margin-top:3px;letter-spacing:.03em}
+  .kart.reload .mermiYazi{color:var(--vurgu)}
+
+  /* ── manuel kontrol kümesi ── */
+  /* Yalnız manuel modlarda görünür. Kadro kartlarının hemen üstünde durur;
+     savaş alanının alt şeridini kapatmaması için yükseklik dar tutuldu. */
+  #kontrol,#kontrolSol{position:fixed;bottom:100px;display:none;
+    flex-direction:column;gap:6px}
+  #kontrol{right:9px;width:64px}
+  #kontrolSol{left:9px;width:44px}
+  #kontrol.acik,#kontrolSol.acik{display:flex}
+  .kBtn{background:var(--panel);color:var(--yazi);border:1px solid var(--cizgi);
+    border-radius:3px;font-size:9px;font-weight:700;letter-spacing:.05em}
+  #kontrolSol .kBtn{width:44px;height:44px;font-size:15px}
+  #kontrol #btnDoldur{width:64px;height:46px}
+  #kontrol .ates{width:64px;height:64px;background:#3a2a12;border-color:var(--vurgu);
+    color:var(--vurgu);font-size:12px}
+  #kontrol .ates.basili{background:var(--vurgu);color:#1a1204}
+  .kBtn:disabled{opacity:.35}
+
+  /* ── perde (bölüm sonu) ── */
+  #perde{position:fixed;inset:0;background:#05070ae6;display:none;
+    align-items:center;justify-content:center;padding:24px;z-index:20}
+  #perde.acik{display:flex}
+  .perdeKutu{background:var(--panel);border:1px solid var(--cizgi);border-left:3px solid var(--vurgu);
+    border-radius:3px;padding:22px 20px;max-width:340px;width:100%;text-align:center}
+  .perdeKutu h2{margin:0 0 12px;font-size:19px;letter-spacing:.1em}
+  .perdeKutu p{margin:5px 0;font-size:13px;color:var(--sonuk);line-height:1.5}
+  .perdeKutu b{color:var(--yazi)}
+  .iyi{color:#57c15a}
+  .uyari{color:var(--tehlike)}
+  .birincil{margin-top:16px;width:100%;background:var(--vurgu);color:#1a1204;border:0;
+    border-radius:3px;padding:13px;font-size:14px;font-weight:800;letter-spacing:.12em}
+  .birincil:active{filter:brightness(.86)}
+  .gerisayim{margin-top:8px;font-size:11px;color:var(--sonuk)}
+
+  /* ── envanter ── */
+  #canta{position:fixed;inset:0;background:#070a0df5;display:none;
+    flex-direction:column;z-index:25}
+  #canta.acik{display:flex}
+  #cantaBaslik{display:flex;justify-content:space-between;align-items:center;
+    padding:12px 14px;border-bottom:1px solid var(--cizgi)}
+  #cantaBaslik h3{margin:0;font-size:14px;letter-spacing:.14em}
+  /* Silah değişimi bölüm başında geçerlidir (DURUM kuralı). Panel bunu
+     söylemezse oyuncu HUD'da eski silahı görüp hata sanıyor. */
+  #cantaNot{font-size:9px;color:var(--sonuk);letter-spacing:.04em;
+    margin-left:auto;margin-right:10px;text-align:right;max-width:170px;
+    line-height:1.3}
+  #btnKapat{background:none;border:1px solid var(--cizgi);color:var(--yazi);
+    border-radius:3px;width:32px;height:32px;font-size:15px}
+  .ayarBtn{background:none;border:1px solid var(--cizgi);color:var(--sonuk);
+    border-radius:3px;height:32px;padding:0 10px;font-size:9px;font-weight:700;
+    letter-spacing:.06em;margin-right:6px}
+  #cantaGovde{flex:none;display:flex;flex-direction:column;gap:8px;
+    padding:8px;overflow:hidden}
+  #cantaSol{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;flex:none}
+  .yuva{background:var(--panel);border:1px solid var(--cizgi);border-radius:3px;
+    padding:5px 3px 4px;position:relative;overflow:hidden;text-align:center}
+  /* Seçili sekmenin altında renk çizgisi — sol şerit yatay dizide okunmuyor. */
+  .yuva::after{content:'';position:absolute;left:0;right:0;bottom:0;height:3px;
+    background:var(--nadir);opacity:.5}
+  .yuva.secili{border-color:var(--vurgu);background:#1c2229}
+  .yuva.secili::after{opacity:1}
+  .yuvaAd{font-size:10px;font-weight:700;letter-spacing:.05em}
+  .yuvaAd .rol{display:none}
+  .yuva img{width:100%;height:26px;object-fit:contain;margin:2px 0 1px}
+  .yuvaSilah{display:none}
+  .yuvaBuild{font-size:9px}
+  #cantaSag{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;
+    align-content:start;overflow-y:auto;flex:none}
+  .esya{background:var(--panel);border:1px solid var(--cizgi);border-radius:3px;
+    padding:6px 4px;position:relative;overflow:hidden;text-align:center}
+  .esya::before{content:'';position:absolute;left:0;right:0;top:0;height:2px;background:var(--nadir)}
+  .esya.takili{border-color:var(--vurgu)}
+  .esya.kilitli{opacity:.4}
+  .esya img{width:100%;height:46px;object-fit:contain}
+  .esyaAd{font-size:9px;font-weight:700;letter-spacing:.04em;margin-top:2px}
+  .esyaSinif{font-size:8px;color:var(--sonuk)}
+  .kilit{position:absolute;inset:auto 0 0 0;background:#000000b8;font-size:8px;
+    padding:2px;letter-spacing:.06em;color:var(--vurgu)}
+  /* Karşılaştırma bölmesi sabit yükseklikte: silah ızgarası büyüdü, alt
+     bölme ekranı yutmasın. */
+  #cantaAlt{border-top:1px solid var(--cizgi);padding:8px 10px 14px;
+    min-height:236px;overflow-y:auto;flex:1}
+  .buildSatir{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:8px}
+  .buildBtn{background:var(--panel);border:1px solid var(--cizgi);color:var(--yazi);
+    border-radius:3px;padding:7px 2px;font-size:9px;font-weight:700;letter-spacing:.03em}
+  .buildBtn.secili{border-color:var(--vurgu);background:#1c2229}
+  .dBaslik{font-size:12px;font-weight:800;letter-spacing:.08em;margin-bottom:5px}
+  .dSatir{display:grid;grid-template-columns:1fr auto 54px;gap:8px;font-size:11px;
+    padding:2px 0;border-bottom:1px solid #ffffff0a}
+  .dSatir span:first-child{color:var(--sonuk)}
+  .dSatir .arti{color:#57c15a;font-size:10px;text-align:right}
+  .dSatir .eksi{color:var(--tehlike);font-size:10px;text-align:right}
+  .dSatir.kosullu b{color:var(--vurgu)}
+  .dSatir .kos{color:var(--vurgu);font-size:9px;text-align:right;opacity:.8}
+  .dAciklama{font-size:12px;color:var(--sonuk);line-height:1.45;margin:8px 0 4px}
+  .dBuild{font-size:10px;color:var(--vurgu);margin:0}
+
+  /* ── yükleme ── */
+  #yuk{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;background:var(--zemin);gap:13px;z-index:40}
+  #cubukDis{width:210px;height:3px;background:#ffffff14;border-radius:2px;overflow:hidden}
+  #cubuk{height:100%;width:0;background:var(--vurgu);transition:width .2s}
+  #yukYazi{font-size:11px;color:var(--sonuk);letter-spacing:.1em}
+</style>
+</head>
+<body>
+<div id="sahne"></div>
+
+<div id="ust">
+  <div id="bolumBilgi">BÖLÜM 1-1</div>
+  <div id="temaAd">OTOPARK</div>
+  <div id="dalgaDis"><div id="dalgaCubuk"></div></div>
+</div>
+
+<div id="yanMenu">
+  <button class="yanBtn" id="btnCanta" title="Donanım">▤</button>
+  <button class="yanBtn" id="btnMod">OTO</button>
+</div>
+
+<div id="kontrolSol">
+  <button class="kBtn" id="btnIleri">▲</button>
+  <button class="kBtn" id="btnGeri">▼</button>
+</div>
+<div id="kontrol">
+  <button class="kBtn ates" id="btnAtes">ATEŞ</button>
+  <button class="kBtn" id="btnDoldur">DOLDUR</button>
+</div>
+<div id="kadro"></div>
+<div id="perde"></div>
+
+<div id="canta">
+  <div id="cantaBaslik">
+    <h3>DONANIM</h3>
+    <span id="cantaNot">değişiklikler sonraki bölümde geçerli</span>
+    <button id="btnSes" class="ayarBtn">SES AÇIK</button>
+    <button id="btnKapat">✕</button>
+  </div>
+  <div id="cantaGovde">
+    <div id="cantaSol"></div>
+    <div id="cantaSag"></div>
+  </div>
+  <div id="cantaAlt"></div>
+</div>
+
+<div id="yuk">
+  <div style="letter-spacing:.14em;font-size:12px">ZOMBİ 3D</div>
+  <div id="cubukDis"><div id="cubuk"></div></div>
+  <div id="yukYazi">varlıklar yükleniyor</div>
+</div>
+
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/"
+}}
+</script>
+<script type="module" src="js/oyun.js"></script>
+</body>
+</html>

@@ -32,6 +32,12 @@ export const SILAHLAR = {
      atış süresi. Ölçümde kısa menzilli iki silah (SMG, av tüfeği) yüksek
      DPS'lerine rağmen AR/LMG'nin altında kaldı. Telafi, yakın mesafede
      BELİRGİN üstünlük olmalı — bedeli maruz kalma. */
+  /* AĞIR TABANCA — 7. silah. Kimlik: revolverin doğal yükseltmesi.
+     Tabanca sınıfı (elSayisi 1) olduğu için kendi locomotion/ateş setini
+     kullanır. Mermi başına yüksek hasar, orta atış hızı, küçük şarjör,
+     hızlı reload; menzil revolverin biraz üstünde. Sayılar ÖLÇÜLEREK
+     ayarlandı, bkz. denge/RAPOR.md. */
+  agirTabanca: { ad:'Agir tabanca', hasar:34, ara:0.78, sarjor:8, reload:1.05, menzil:9.5 },
   smg:       { ad:'SMG',            hasar:17,  ara:0.11, sarjor:32, reload:1.7, menzil:6.5 },
   saldiri:   { ad:'Saldiri tufegi', hasar:14,  ara:0.16, sarjor:30, reload:2.2, menzil:11  },
   /* Av tüfeği ideal mesafesi ayrıdır: genel %67,5 kuralı uygulanınca taşıyıcı

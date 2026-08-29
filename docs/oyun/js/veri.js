@@ -26,6 +26,14 @@ export const SILAH_SUNUM = {
     aciklama: 'Başlangıç silahı. Altı mermilik şarjör, uzun reload. ' +
               'Şarjör bitmeden zombi hatta varır — gerilim buradan doğar.',
   },
+  agirTabanca: {
+    ad: 'Ağır Tabanca',
+    model: '../silah/optim/agir-tabanca.glb', nadirlik: 'uzman', acilis: 2,
+    sinif: 'Ağır tabanca', boy: 0.34, elSayisi: 1,
+    aciklama: 'Revolverin yükseltmesi. Sekiz mermilik şarjör ve 1,05 sn reload: ' +
+              'ölçümde en kısa reload boşluğuna sahip silah (%9). Şarjör başına ' +
+              'bir yürüyeni rahat düşürür — revolver düşüremiyordu.',
+  },
   smg: {
     ad: 'SMG',
     model: '../silah/optim/smg.glb', nadirlik: 'uzman', acilis: 3,

@@ -132,6 +132,24 @@ export function temaBul(bolum) {
   return t;
 }
 
+/* ═══ KLİP PENCERELERİ ═══
+   Mixamo klipleri "eylem" değil "sahne"dir: tabancaAtes 5,33 sn, zombie
+   biting 6,60 sn. Oyun bunları 0,2-0,7 sn'lik pencerede oynatınca yalnız
+   BAŞLANGIÇ duruşu görünüyordu — nötr/T poz. Aşağıdaki aralıklar
+   `tools/zombi-klip-pencere.mjs` ile ÖLÇÜLDÜ (kol kemiklerinin hareket
+   enerjisinin tepe noktası) ve klipler yüklenirken kesiliyor.
+   Yürüyüş/idle klipleri döngü olduğu için kesilmez. */
+export const KLIP_PENCERE = {
+  /* kurtulan */
+  tabancaAtes:   [1.55, 2.45],
+  /* zombi — vuruşun gerçekten göründüğü aralık */
+  saldiri:       [0.55, 1.45],
+  saldiri2:      [4.90, 5.90],
+  saldiri3:      [0.25, 1.15],
+  vurus:         [0.30, 1.00],
+  olum3:         [0.00, 3.20],   /* 11,57 sn; gövde 3,4 sn'de kalkıyor */
+};
+
 /* ═══ ZOMBİ SUNUMU ═══ */
 export const ZOMBI_SUNUM = {
   yuruyen: { ad: 'Yürüyen', olcek: 1.00, renk: 0x8fa07a },

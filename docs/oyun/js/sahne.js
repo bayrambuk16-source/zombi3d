@@ -10,7 +10,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { clone as iskeletKlon } from 'three/addons/utils/SkeletonUtils.js';
-import { SILAH_SUNUM, ZOMBI_SUNUM, temaBul } from './veri.js';
+import { SILAH_SUNUM, ZOMBI_SUNUM, temaBul, KLIP_PENCERE } from './veri.js';
 import { ZOMBILER } from '../../denge/motor.mjs';
 
 const CDN = 'https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/libs/draco/';
@@ -23,6 +23,31 @@ const YURU_REF_HIZ = 1.35;
    Hips ALT tarafa aittir — gövdenin salınımını o taşır. */
 const UST_RE = /(Spine|Neck|Head|Shoulder|Arm|ForeArm|Hand|Thumb|Index|Middle|Ring|Pinky)/;
 const ALT_RE = /(Hips|UpLeg|Leg|Foot|ToeBase|Toe_End)/;
+
+/** Klibi zaman aralığına keser ve başı sıfıra çeker.
+ *  three.js AnimationUtils.subclip KARE ile çalışır ve klibin fps'ini
+ *  bilmemizi ister; burada doğrudan zaman üzerinden kesiyoruz. */
+function klipKes(klip, bas, son) {
+  const y = klip.clone();
+  y.tracks = [];
+  for (const t of klip.tracks) {
+    const boy = t.values.length / t.times.length;
+    const za = [], de = [];
+    for (let i = 0; i < t.times.length; i++) {
+      if (t.times[i] < bas || t.times[i] > son) continue;
+      za.push(t.times[i] - bas);
+      for (let k = 0; k < boy; k++) de.push(t.values[i * boy + k]);
+    }
+    if (za.length < 2) continue;
+    const yt = t.clone();
+    yt.times = new Float32Array(za);
+    yt.values = new Float32Array(de);
+    y.tracks.push(yt);
+  }
+  if (!y.tracks.length) return klip;      /* kesilemedi, aslını kullan */
+  y.resetDuration();
+  return y;
+}
 
 /** Klibi kemik kümesine göre süzer; boş kalırsa null döner. */
 function klipBol(klip, bolge) {
@@ -192,7 +217,9 @@ export class Sahne {
     const liste = [
       ['kurtulan1', 'karakter/kurtulan1.glb'], ['kurtulan2', 'karakter/kurtulan2.glb'],
       ['kurtulan3', 'karakter/kurtulan3.glb'], ['kurtulan4', 'karakter/kurtulan4.glb'],
-      ['zombi-yuruyen', 'karakter/zombi-yuruyen.glb'],
+      ['zombi-yuruyen',  'karakter/zombi-yuruyen.glb'],
+      ['zombi-yuruyen2', 'karakter/zombi-yuruyen2.glb'],
+      ['zombi-yuruyen3', 'karakter/zombi-yuruyen3.glb'],
       ['zombi-kosucu',  'karakter/zombi-kosucu.glb'],
       ['zombi-tank',    'karakter/zombi-tank.glb'],
       ['zombi-boss',    'karakter/zombi-boss.glb'],
@@ -214,6 +241,19 @@ export class Sahne {
         if (o.geometry && o.geometry.boundingSphere) o.geometry.boundingSphere.radius *= 2.2;
       });
       if (ilerleme) ilerleme((i + 1) / liste.length, ad);
+    }
+    /* Ölçülen pencerelere göre kes — uzun "sahne" klipleri oyunun kısa
+       eylem penceresine sığmıyordu. */
+    for (const ad of ['kurtulan1', 'klip-tabanca', 'zombi-yuruyen']) {
+      const g = this.M[ad];
+      if (!g) continue;
+      g.animations = g.animations.map(k => {
+        const p = KLIP_PENCERE[k.name];
+        if (!p) return k;
+        const y = klipKes(k, p[0], Math.min(p[1], k.duration));
+        y.name = k.name;
+        return y;
+      });
     }
     /* Klip kaynakları — mesh başka dosyadan, animasyon buradan. */
     /* Tüfek + tabanca klipleri tek listede; ad çakışması yok
@@ -432,9 +472,18 @@ export class Sahne {
   }
 
   _zombiAl(tur) {
-    if (!this.zombiHavuz.has(tur)) this.zombiHavuz.set(tur, []);
-    const havuz = this.zombiHavuz.get(tur);
-    const a = havuz.pop() || this._aktorYap('zombi-' + tur, this.zombiKlip, 1);
+    /* Yürüyen sürünün büyük çoğunluğu; tek modelle temsil edilince kalabalık
+       "aynı kişinin kopyaları" gibi duruyordu. Üç ayrı karakter arasında
+       dağıtılıyor. Havuz model bazında ayrı tutulur. */
+    let model = 'zombi-' + tur;
+    if (tur === 'yuruyen') {
+      const v = this._sayac % 3;
+      model = v === 0 ? 'zombi-yuruyen' : 'zombi-yuruyen' + (v + 1);
+    }
+    if (!this.zombiHavuz.has(model)) this.zombiHavuz.set(model, []);
+    const havuz = this.zombiHavuz.get(model);
+    const a = havuz.pop() || this._aktorYap(model, this.zombiKlip, 1);
+    a.model = model;
     a.tur = tur;
     const s = ZOMBI_SUNUM[tur];
     a.kok.scale.setScalar(s.olcek);
@@ -471,8 +520,9 @@ export class Sahne {
   _zombiBirak(a) {
     a.kok.visible = false;
     a.kok.position.y = 0;
-    const havuz = this.zombiHavuz.get(a.tur) || [];
-    if (havuz.length < 24) { havuz.push(a); this.zombiHavuz.set(a.tur, havuz); }
+    const anahtar = a.model || ('zombi-' + a.tur);
+    const havuz = this.zombiHavuz.get(anahtar) || [];
+    if (havuz.length < 24) { havuz.push(a); this.zombiHavuz.set(anahtar, havuz); }
     else this.sahne.remove(a.kok);
   }
 
@@ -496,8 +546,13 @@ export class Sahne {
              Tabanca taşıyan artık kendi ateş klibini kullanıyor; tüfek
              klibiyle revolver sıkmak yanlış duruş veriyordu. */
           const atesKlip = (a.tabanca && a.ust.tabancaAtes) ? 'tabancaAtes' : 'ates';
-          this.kanal(a, 'ust', atesKlip, { dongu: false, hiz: 1.4, gecis: 0.04 });
-          a.ustKilit = 0.2;
+          /* Klip atış aralığına sığdırılır: sabit 0,2 sn kilit uzun klibin
+             yalnız başını gösteriyordu. */
+          const ae = a.ust[atesKlip];
+          const asure = ae ? ae.getClip().duration : 0.3;
+          const ahiz = Math.max(1, Math.min(3, asure / Math.max(0.25, o.kurtulan.s.ara * 0.85)));
+          this.kanal(a, 'ust', atesKlip, { dongu: false, hiz: ahiz, gecis: 0.04 });
+          a.ustKilit = asure / ahiz;
           const f = this._vfxAl(this.alevler);
           f.visible = true; f.material.opacity = 1; f.userData.t = 0.05;
           f.position.set(o.kurtulan.serit + 0.3, 1.42, o.kurtulan.z - 0.55);
@@ -533,8 +588,14 @@ export class Sahne {
       } else if (o.tip === 'saldiri') {
         const z = this.zombiAktor.get(o.zombi.id);
         if (z) {
-          this.oynat(z, z.saldiriKlip || 'saldiri', { dongu: false, gecis: 0.1 });
-          z.kilit = 0.7;
+          const sk = z.saldiriKlip || 'saldiri';
+          const se = z.eylem[sk];
+          const ssure = se ? se.getClip().duration : 0.7;
+          /* Saldırı klibi vuruş aralığına sığsın; sabit 0,7 sn kilit
+             uzun kliplerde yalnız hazırlığı gösteriyordu. */
+          const shiz = Math.max(1, Math.min(2.4, ssure / 0.9));
+          this.oynat(z, sk, { dongu: false, gecis: 0.1, hiz: shiz });
+          z.kilit = ssure / shiz;
         }
         const k = this.kurtulanAktor[o.kurtulan.i];
         if (k && !o.kurtulan.olu && k.ust.hasar) {

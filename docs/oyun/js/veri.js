@@ -198,7 +198,11 @@ export function temaBul(bolum) {
    Yürüyüş/idle klipleri döngü olduğu için kesilmez. */
 export const KLIP_PENCERE = {
   /* kurtulan */
-  tabancaAtes:   [1.55, 2.45],
+  /* tabancaAtes penceresi v2 setiyle YENİDEN ölçüldü. Eski değer
+     [1,55-2,45] eski klibe göreydi; yeni klip 2,70 sn ve enerji tepesi
+     0,60 sn'de. Eski pencere uygulansaydı atışın bittiği yeri gösterirdi.
+     Klip kaynağı değişince penceresi de değişir — ikisi ayrılamaz. */
+  tabancaAtes:   [0.30, 1.10],
   /* zombi — vuruşun gerçekten göründüğü aralık */
   saldiri:       [0.55, 1.45],
   saldiri2:      [4.90, 5.90],

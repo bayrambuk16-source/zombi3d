@@ -232,6 +232,7 @@ export class Sahne {
       ['zombi-tank',    'karakter/zombi-tank.glb'],
       ['zombi-boss',    'karakter/zombi-boss.glb'],
       ['klip-tabanca',  'karakter/klip-tabanca.glb'],
+      ['klip-tabanca-v2', 'karakter/klip-tabanca-v2.glb'],
       ['klip-tabanca-ek', 'karakter/klip-tabanca-ek.glb'],
       ['klip-agir',     'karakter/klip-agir.glb'],
     ];
@@ -282,7 +283,7 @@ export class Sahne {
     }
     /* Ölçülen pencerelere göre kes — uzun "sahne" klipleri oyunun kısa
        eylem penceresine sığmıyordu. */
-    for (const ad of ['kurtulan1', 'klip-tabanca', 'klip-tabanca-ek',
+    for (const ad of ['kurtulan1', 'klip-tabanca', 'klip-tabanca-ek', 'klip-tabanca-v2',
                       'zombi-yuruyen', 'klip-agir']) {
       const g = this.M[ad];
       if (!g) continue;
@@ -297,9 +298,20 @@ export class Sahne {
     /* Klip kaynakları — mesh başka dosyadan, animasyon buradan. */
     /* Tüfek + tabanca klipleri tek listede; ad çakışması yok
        (tabanca* öneki). Silah sınıfına göre seçilir. */
+    /* SIRA ÖNEMLİ: aynı ada sahip klipte SONRAKİ kazanır (`_aktorYap`
+       `eylem[k.name] = ...` ile yazar). v2 seti eski tabanca setinin
+       üstüne biner.
+       Neden v2: eski set TUTARSIZDI — locomotion bir Mixamo paketinden,
+       ateş bambaşka bir paketten geliyordu ve locomotion paketinde nişan
+       ya da ateş klibi hiç yoktu. Sonuç: `tabancaAtes` ateş etme olarak
+       okunmuyor, idle/yürüyüşte eller kafa hizasında kalıyordu.
+       v2'de nişan (Pistol Aim), ateş (Shooting Pistol) ve tüm locomotion
+       TEK paketten geliyor. Reload ve hasar/ölüm o pakette yok, eski
+       kaynaklarda kalıyor. */
     this.insanKlip = this.M.kurtulan1.animations
       .concat(this.M['klip-tabanca'].animations)
-      .concat(this.M['klip-tabanca-ek'].animations);
+      .concat(this.M['klip-tabanca-ek'].animations)
+      .concat(this.M['klip-tabanca-v2'].animations);
     /* Tank ve boss, yürüyenin kliplerini paylaşıyordu: ekrandaki en iri iki
        düşman sıradan bir yürüyenle birebir aynı hareket ediyordu. Ağır
        klipler ortak havuza katılır, tür seçimi `_zombiKlipSec`te yapılır. */
@@ -308,7 +320,7 @@ export class Sahne {
 
     /* Klip kaynağı dosyaların mesh'i hiç sahneye girmiyor; dokularını ve
        geometrisini GPU belleğinde tutmanın anlamı yok. */
-    for (const ad of ['klip-tabanca', 'klip-tabanca-ek', 'klip-agir']) {
+    for (const ad of ['klip-tabanca', 'klip-tabanca-ek', 'klip-tabanca-v2', 'klip-agir']) {
       this.M[ad].scene.traverse(o => {
         if (!o.isMesh) return;
         o.geometry.dispose();

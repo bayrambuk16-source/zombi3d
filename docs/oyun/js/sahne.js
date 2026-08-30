@@ -521,6 +521,8 @@ export class Sahne {
     this.mekanMat.color.setHex(t.duvar).multiplyScalar(0.82);
     this.mekanCizgiMat.color.setHex(t.gunes);
     this.mekanRayMat.color.setHex(t.sis);
+    this.mekanVurguMat.color.setHex(t.lamba || t.gunes);
+    this.mekanPropMat.color.setHex(t.duvar).multiplyScalar(1.75);
     /* Işık dili temadan: lamba rengi ve siluet ayıran arka ışık. Gerçek
        ışık SAYISI değişmiyor, yalnız renk ve şiddet. */
     this.lambaMat.color.setHex(t.lamba || t.gunes);
@@ -583,6 +585,21 @@ export class Sahne {
        yarışan bir merdiven oluyordu. Ray bir VURGU değil, zeminde bir OYUK
        gibi okunmalı: zemin renginden koyu. */
     this.mekanRayMat = new THREE.MeshLambertMaterial({ color: 0x14161a });
+    /* İmza proplarının okunan yüzeyi: tabela levhası, lamba başlığı.
+       Işık almadan kendi rengini verir — küçük bir vurgu için ayrı ışık
+       açmanın anlamı yok. Rengi temanın lamba renginden gelir. */
+    this.mekanVurguMat = new THREE.MeshBasicMaterial({ color: 0xcfe6ff });
+    /* Prop gövdesi duvardan AÇIK olmalı: aynı renk olunca siluet duvara
+       karışıyor ve "tanımlayıcı obje" hiçbir şey tanımlamıyordu. */
+    this.mekanPropMat = new THREE.MeshLambertMaterial({ color: 0x3a4048 });
+
+    /* ── İMZA PROP BANDI ──
+       Ölçüldü: zombiler koridorda hiçbir zaman |x| = 3,40'ı geçmiyor
+       (574 örnek, bölüm 18). Duvar iç yüzü 4,5'te. Proplar bu iki sayının
+       arasına, 3,6-4,5 bandına konur — böylece hiçbir prop hiçbir zombiyi
+       kapatamaz. Aşama 4'te tavan kirişleriyle öğrenilen ders: okunabilirlik
+       dekordan önce gelir. */
+    const PROP_X = 4.05;
 
     /** Bir InstancedMesh'i verilen dönüşümlerle doldurup gruba ekler. */
     const ekle = (grup, geo, mat, yerlesim) => {
@@ -622,6 +639,22 @@ export class Sahne {
       ekle(g, new THREE.BoxGeometry(0.55, 3.4, 0.55), this.mekanMat, kolonZ);
       ekle(g, new THREE.BoxGeometry(1.7, 0.3, 0.42), this.mekanMat, kirisZ);
       ekle(g, new THREE.PlaneGeometry(1.9, 0.07), this.mekanCizgiMat, cizgi);
+      /* İmza prop 1: park bariyeri (boru + iki direk). */
+      const barZ = [-8, -19, -30], bar = [], barDirek = [];
+      for (const z of barZ) for (const yon of [-1, 1]) {
+        bar.push([yon * PROP_X, 0.62, z]);
+        barDirek.push([yon * PROP_X - 0.5, 0.31, z], [yon * PROP_X + 0.5, 0.31, z]);
+      }
+      ekle(g, new THREE.BoxGeometry(1.2, 0.1, 0.1), this.mekanPropMat, bar);
+      ekle(g, new THREE.BoxGeometry(0.08, 0.62, 0.08), this.mekanPropMat, barDirek);
+      /* İmza prop 2: park yeri tabelası (direk + levha). */
+      const tabZ = [-13, -25], tabDirek = [], tabLevha = [];
+      for (const z of tabZ) for (const yon of [-1, 1]) {
+        tabDirek.push([yon * PROP_X, 1.0, z]);
+        tabLevha.push([yon * PROP_X, 2.0, z, 0, yon * Math.PI / 2, 0]);
+      }
+      ekle(g, new THREE.BoxGeometry(0.07, 2.0, 0.07), this.mekanPropMat, tabDirek);
+      ekle(g, new THREE.PlaneGeometry(0.42, 0.34), this.mekanVurguMat, tabLevha);
       this.mekan.otopark = g;
     }
 
@@ -647,6 +680,28 @@ export class Sahne {
       const serit = [];
       for (let i = 0; i < 16; i++) serit.push([0, 0.013, 1 - i * 3.4, yatay]);
       ekle(g, new THREE.PlaneGeometry(0.16, 1.7), this.mekanCizgiMat, serit);
+      /* İmza prop 1: sokak lambası. Direk + koridora doğru uzanan kol +
+         kendi rengini veren başlık. Sokağın en zayıf tema olmasının sebebi
+         dikey işaret yokluğuydu. */
+      const lambaZ = [-6, -16, -26, -36], direk = [], kol = [], bas = [];
+      for (const z of lambaZ) for (const yon of [-1, 1]) {
+        direk.push([yon * PROP_X, 1.7, z]);
+        kol.push([yon * (PROP_X - 0.22), 3.36, z]);
+        bas.push([yon * (PROP_X - 0.42), 3.2, z, -Math.PI / 2, 0, 0]);
+      }
+      ekle(g, new THREE.BoxGeometry(0.1, 3.4, 0.1), this.mekanPropMat, direk);
+      ekle(g, new THREE.BoxGeometry(0.46, 0.08, 0.08), this.mekanPropMat, kol);
+      ekle(g, new THREE.PlaneGeometry(0.34, 0.2), this.mekanVurguMat, bas);
+      /* İmza prop 2: terk edilmiş araç. Dar tutuldu (0,85) çünkü güvenli
+         bant 0,9 birim; silueti uzunluğu ve tavan çizgisi taşıyor. */
+      const aracZ = [-11, -31], govde = [], kabin = [];
+      for (let i = 0; i < aracZ.length; i++) {
+        const yon = i % 2 ? 1 : -1;
+        govde.push([yon * PROP_X, 0.34, aracZ[i]]);
+        kabin.push([yon * PROP_X, 0.78, aracZ[i] + 0.15]);
+      }
+      ekle(g, new THREE.BoxGeometry(0.85, 0.68, 2.4), this.mekanPropMat, govde);
+      ekle(g, new THREE.BoxGeometry(0.72, 0.42, 1.2), this.mekanPropMat, kabin);
       this.mekan.sokak = g;
     }
 
@@ -672,6 +727,23 @@ export class Sahne {
         kaburga.push([-3.9, 3.38, z], [3.9, 3.38, z]);
       }
       ekle(g, new THREE.BoxGeometry(1.9, 0.36, 0.34), this.mekanMat, kaburga);
+      /* İmza prop 1: peron bankı. Peron yüzeyinin üstüne oturur (y 0,55). */
+      const bankZ = [-9, -21, -33], oturak = [], ayak = [];
+      for (const z of bankZ) for (const yon of [-1, 1]) {
+        oturak.push([yon * (PROP_X - 0.35), 0.98, z]);
+        ayak.push([yon * (PROP_X - 0.35), 0.76, z - 0.5],
+                  [yon * (PROP_X - 0.35), 0.76, z + 0.5]);
+      }
+      ekle(g, new THREE.BoxGeometry(0.5, 0.09, 1.5), this.mekanPropMat, oturak);
+      ekle(g, new THREE.BoxGeometry(0.4, 0.36, 0.08), this.mekanPropMat, ayak);
+      /* İmza prop 2: istasyon tabelası — asılı, kendi rengini veren levha. */
+      const istZ = [-15, -29], istDirek = [], istLevha = [];
+      for (const z of istZ) for (const yon of [-1, 1]) {
+        istDirek.push([yon * PROP_X, 2.2, z]);
+        istLevha.push([yon * PROP_X, 2.55, z, 0, yon * Math.PI / 2, 0]);
+      }
+      ekle(g, new THREE.BoxGeometry(0.06, 1.4, 0.06), this.mekanPropMat, istDirek);
+      ekle(g, new THREE.PlaneGeometry(0.9, 0.26), this.mekanVurguMat, istLevha);
       this.mekan.metro = g;
     }
 
@@ -694,6 +766,26 @@ export class Sahne {
       ekle(g, new THREE.PlaneGeometry(9.2, 0.045), this.mekanCizgiMat, karo);
       ekle(g, new THREE.PlaneGeometry(0.045, 62), this.mekanCizgiMat,
            [[-2.3, 0.012, -14, yatay], [2.3, 0.012, -14, yatay]]);
+      /* İmza prop 1: koridorda bırakılmış sedye. Alçak ve dar; hastane
+         koridorunun terk edilmişliğini tek nesneyle anlatır. */
+      const sedyeZ = [-10, -24, -38], yatak = [], sedyeAyak = [];
+      for (let i = 0; i < sedyeZ.length; i++) {
+        const yon = i % 2 ? 1 : -1, z = sedyeZ[i];
+        yatak.push([yon * PROP_X, 0.68, z]);
+        for (const dz of [-0.75, 0.75])
+          sedyeAyak.push([yon * PROP_X, 0.33, z + dz]);
+      }
+      ekle(g, new THREE.BoxGeometry(0.62, 0.12, 2.0), this.mekanPropMat, yatak);
+      ekle(g, new THREE.BoxGeometry(0.5, 0.66, 0.07), this.mekanPropMat, sedyeAyak);
+      /* İmza prop 2: medikal dolap — duvara dayalı dik kutu, kapı oyukları
+         arasındaki boş duvarı kırar. */
+      const dolapZ = [-17, -31], dolap = [], dolapYuz = [];
+      for (const z of dolapZ) for (const yon of [-1, 1]) {
+        dolap.push([yon * (PROP_X + 0.2), 0.9, z]);
+        dolapYuz.push([yon * (PROP_X - 0.11), 1.35, z, 0, yon * Math.PI / 2, 0]);
+      }
+      ekle(g, new THREE.BoxGeometry(0.42, 1.8, 0.9), this.mekanPropMat, dolap);
+      ekle(g, new THREE.PlaneGeometry(0.5, 0.22), this.mekanVurguMat, dolapYuz);
       this.mekan.hastane = g;
     }
 

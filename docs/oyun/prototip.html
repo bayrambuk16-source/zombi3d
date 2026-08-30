@@ -32,8 +32,18 @@
     border:1px solid var(--cizgi);border-radius:3px;font-size:13px;font-weight:700;
     letter-spacing:0;line-height:1;padding:0}
   .yanBtn:active{background:#2a3038}
-  /* Mod rozeti metin taşır, o yüzden biraz geniş ve küçük punto. */
-  #btnMod{width:52px;font-size:9px;letter-spacing:.04em;color:var(--yazi)}
+  /* İkonlar inline SVG. em ile ölçeklenir ki HUD ölçeği değişince onlar da
+     değişsin; renk currentColor'dan gelir, ayrı dosya/renk gerekmez. */
+  .yanBtn svg{width:19px;height:19px;display:block;margin:auto}
+  .build svg,.yuvaBuild svg{width:12px;height:12px;display:inline-block;
+    vertical-align:-.16em}
+  .buildBtn .build svg{width:13px;height:13px}
+  /* Mod rozeti halka + metin taşır: iki satır, biraz geniş ve küçük punto.
+     Halka "ne kadarı sende" der, metin hangi mod olduğunu kesinler. */
+  #btnMod{width:54px;height:44px;font-size:8px;letter-spacing:.04em;
+    color:var(--yazi);display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:1px}
+  #btnMod svg{width:19px;height:19px;display:block}
   .yanBtn{position:relative}
   .yanBtn.rozet::after{content:'';position:absolute;top:5px;right:5px;
     width:8px;height:8px;border-radius:50%;background:var(--vurgu);
@@ -183,7 +193,7 @@
 </div>
 
 <div id="yanMenu">
-  <button class="yanBtn" id="btnCanta" title="Donanım">▤</button>
+  <button class="yanBtn" id="btnCanta" title="Donanım"></button>
   <button class="yanBtn" id="btnMod">OTO</button>
 </div>
 

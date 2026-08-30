@@ -4,6 +4,7 @@
  *  Sanat yönü The Division Mobile'dan: koyu zemin, kehribar vurgu, köşeli
  *  paneller, nadirlik renk şeridi, sayıların okunur olduğu sıkı ızgara.
  */
+import { IKON } from './ikon.js';
 import { SILAH_SUNUM, BUILD_SUNUM, NADIRLIK, KURTULANLAR, SILAHLAR, BUILDLER,
          silahKunye, silahAdi } from './veri.js';
 
@@ -30,7 +31,9 @@ export class Arayuz {
       sayac:  document.getElementById('sayac'),
       mod:    document.getElementById('btnMod'),
     };
-    document.getElementById('btnCanta').onclick = () => this.cantaAc();
+    const btnCanta = document.getElementById('btnCanta');
+    btnCanta.innerHTML = IKON['savas/canta'];
+    btnCanta.onclick = () => this.cantaAc();
     document.getElementById('btnKapat').onclick = () => this.cantaKapat();
     this.d.mod.onclick = () => this.geri.modDegis();
     this.d.ses = document.getElementById('btnSes');
@@ -148,12 +151,26 @@ export class Arayuz {
     this.d.tema.textContent = tema.ad.toUpperCase() + '  ·  KALAN ' + kalan;
   }
 
-  /* 52x52 kutuda tam ad savaş alanında fazla yer kaplıyordu; kısa rozet. */
+  /* Mod rozeti: halka + kısa ad.
+   *
+   * Halka dört dilime bölünmüştür ve dilimler sırayla hedef · ateş · reload ·
+   * pozisyon. DOLU dilim = kontrol OYUNCUDA. Böylece rozet modun adını değil
+   * NE KADARININ SENDE olduğunu söylüyor; DURUM.md §11'deki kademelenme
+   * doğrudan görselleşiyor.
+   *
+   * Metin KALDIRILMADI, bilerek: tam otomatik (0 dolu) ile yarı otomatik
+   * (1 dolu) tek başına 20 px'te ayrışmıyor. Halka hızlı okuma, metin kesin
+   * okuma. Tam ad hâlâ yok — savaş alanında fazla yer kaplıyordu. */
   modYazi(mod) {
-    this.d.mod.textContent = ({
-      'TAM OTOMATİK': 'OTO', 'YARI OTOMATİK': 'Y-OTO',
-      'YARI MANUEL': 'Y-MAN', 'MANUEL': 'MANUEL',
-    })[mod] || mod;
+    const t = ({
+      'TAM OTOMATİK': ['OTO', 'mod-1-tam-otomatik'],
+      'YARI OTOMATİK': ['Y-OTO', 'mod-2-yari-otomatik'],
+      'YARI MANUEL': ['Y-MAN', 'mod-3-yari-manuel'],
+      'MANUEL': ['MANUEL', 'mod-4-manuel'],
+    })[mod];
+    if (!t) { this.d.mod.textContent = mod; return; }
+    this.d.mod.innerHTML = IKON['savas/' + t[1]] + '<span>' + t[0] + '</span>';
+    this.d.mod.title = mod;
   }
   sesYazi(acik) { this.d.ses.textContent = acik ? 'SES AÇIK' : 'SES KAPALI'; }
 
@@ -249,7 +266,7 @@ export class Arayuz {
     const bs = alt.querySelector('.buildSatir');
     for (const [anahtar, b] of Object.entries(BUILD_SUNUM)) {
       const d = el('button', 'buildBtn' + (y.build === anahtar ? ' secili' : ''),
-        '<span style="color:' + b.renk + '">' + b.simge + '</span> ' + b.ad);
+        '<span class="build" style="color:' + b.renk + '">' + b.simge + '</span> ' + b.ad);
       d.onclick = () => { this.geri.buildSec(this.secili, anahtar); this.cantaCiz(); };
       bs.appendChild(d);
     }

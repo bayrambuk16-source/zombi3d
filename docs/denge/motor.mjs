@@ -125,11 +125,68 @@ export function yaklasmaSuresi(tur) {
 
 function carp(v) { return 1 + (v || 0); }
 
-export function silahHesapla(silahAd, buildAd) {
+/* ═══════ TEÇHİZAT — item katmanı ═══════
+ *
+ *  NEDEN SİMÜLATÖRDE: "Chapter 1'e ganimet sokmayız, kalibrasyon korunur"
+ *  yeterli DEĞİL. Chapter 2'den itibaren simülatör item gücü olmadan
+ *  koşarsa ölçülen denge ile oynanan denge sessizce ayrışır — dengeyi
+ *  ölçmenin anlamı kalmaz (gdd/03 §1).
+ *
+ *  Sayılar burada TÜRETİLİR, elle yazılmaz. Düşman chapter başına ×1,10
+ *  güçleniyor; kadronun artışı üçe bölünmüştür ve çarpımları hedefi
+ *  birebir tutturur:
+ *
+ *    silah item seviyesi   1,075^(L-1)             → L36'da ×12,567
+ *    ekipman hasar bonusu  (1,10/1,075)^(L-1) − 1  → L36'da +%123,6
+ *    çarpım                                         → ×28,10 ✔
+ *
+ *    zırh toplamı = 3 × 53,33 × (1,10^(L-1) − 1) = 160 × (1,10^(L-1) − 1)
+ *    ⇒ EHP = 160 × 1,10^(L-1). Taban can SABİT; zırh YALNIZ ekipmandan
+ *      gelir, böylece ekipmansız kadro her zaman kırılgan kalır.
+ */
+export const TECHIZAT = {
+  silahAdim: 0.075,    /* silah seviyesi başına hasar artışı */
+  hedefAdim: 0.10,     /* düşmanın chapter başına artışı — hedef eğri */
+  zirhBirim: 53.33,    /* pay 1 için zırh katsayısı */
+  slotPayi: { koruma: 1.8, tasima: 0.6, aksesuar: 0.6 },
+  /* Nadirlik HAM silah hasarını değil EKİPMAN bütçesini büyütür
+     (gdd/03 §3). Değerler belgedeki bantların ortası. */
+  nadirlik: { standart: 1.00, uzman: 1.05, ustun: 1.105, yuksek: 1.16 },
+};
+
+/** Item seviyesi + nadirlikten güç katkılarını türetir.
+ *  Teçhizat yoksa ya da seviye 1/Standart ise SIFIR katkı döner — K0
+ *  kapısının şartı budur: item'siz koşu bugünkü sonucu birebir üretmeli. */
+export function techizatHesapla(t) {
+  const L = (t && t.seviye) || 1;
+  const n = TECHIZAT.nadirlik[(t && t.nadirlik) || 'standart'] || 1;
+  if (L <= 1) return { seviye: 1, silahCarpan: 1, hasarBonus: 0, zirh: 0 };
+  const us = L - 1;
+  const pay = TECHIZAT.slotPayi.koruma + TECHIZAT.slotPayi.tasima +
+              TECHIZAT.slotPayi.aksesuar;
+  return {
+    seviye: L,
+    /* Yalnız VURUŞ ağırlaşır; ara/şarjör/reload/menzil ölçeklenmez —
+       silahın kimliği seviyeyle değişmez (gdd/03 §2). */
+    silahCarpan: Math.pow(1 + TECHIZAT.silahAdim, us),
+    hasarBonus: (Math.pow((1 + TECHIZAT.hedefAdim) / (1 + TECHIZAT.silahAdim), us) - 1) * n,
+    zirh: TECHIZAT.zirhBirim * pay * (Math.pow(1 + TECHIZAT.hedefAdim, us) - 1) * n,
+  };
+}
+
+export function silahHesapla(silahAd, buildAd, tech) {
   const s = SILAHLAR[silahAd], b = BUILDLER[buildAd] || {};
+  /* Teçhizat verilmemişse hiçbir ek çarpan uygulanmaz. Çarpanla geçmek
+     kayan noktada aynı sonucu verirdi ama kapıyı NİYETLE garanti altına
+     almak daha sağlam: item'siz yol hiç dokunulmamış koddur. */
+  let itemCarpan = 1;
+  if (tech) {
+    const g = techizatHesapla(tech);
+    itemCarpan = g.silahCarpan * (1 + g.hasarBonus);
+  }
   return {
     ad: s.ad, kaynak: s,
-    hasar:  s.hasar * carp(b.hasar),
+    hasar:  s.hasar * carp(b.hasar) * itemCarpan,
     ara:    s.ara / carp(b.atis),
     sarjor: Math.max(1, Math.round(s.sarjor * carp(b.sarjor))),
     reload: s.reload * carp(b.reload),
@@ -173,9 +230,15 @@ export class Savas {
     this.tolerans = ayar.tolerans !== undefined ? ayar.tolerans : 90;
 
     this.kurtulanlar = ayar.kadro.map((k, i) => {
-      const s = silahHesapla(k.silah, k.build);
+      const s = silahHesapla(k.silah, k.build, k.techizat);
+      /* Zırh EK CAN HAVUZU olarak uygulanır (gdd/03 §4 kod etkisi notu):
+         bölüm başında dolar, yeni bir hasar-azaltma matematiği açılmaz.
+         Teçhizat yoksa zırh 0 ve taban can değişmez. */
+      const g = k.techizat ? techizatHesapla(k.techizat) : null;
+      const toplamCan = S.kurtulanCan + (g ? Math.round(g.zirh) : 0);
       return {
         i, s, silahAd: k.silah, buildAd: k.build,
+        techizat: g,
         ad: s.ad + ' / ' + (BUILDLER[k.build] || {}).ad,
         /* şerit: dört kurtulan koridorda yan yana dizilir. Gameplay 1B'dir,
            şerit yalnız görsel ve zombinin hedef seçimini etkilemez. */
@@ -183,7 +246,7 @@ export class Savas {
         z: S.hatZ + i * 0.001,
         /* Faz kaydırması ZORUNLU: dört kurtulan aynı tick'te ateş ederse
            hepsi aynı hedefe yüklenir ve overkill yapay olarak patlar. */
-        can: S.kurtulanCan, maxCan: S.kurtulanCan,
+        can: toplamCan, maxCan: toplamCan,
         mermi: s.sarjor, reloadKalan: 0, atesKalan: r() * s.ara,
         ilk: true, olu: false,
         atilanHasar: 0, israf: 0, kesim: 0, atisSayisi: 0, reloadSuresi: 0,

@@ -1,3 +1,4 @@
+import { IKON } from './ikon.js';
 /** Sunum verisi ve ilerleme durumu.
  *
  *  DENGE SAYILARI BURADA YOKTUR. Hasar/menzil/şarjör vb. tek kaynaktan,
@@ -71,15 +72,53 @@ export const SILAH_SUNUM = {
   },
 };
 
+/* Build özeti ELLE YAZILMAZ, motordan üretilir.
+   Sebep: elle yazılan metin ölçümle güncellenen motorun gerisinde kalıyordu —
+   Marksman "menzil +15% / uzak +30%" diyordu, motor +10% / +22% uyguluyordu.
+   Sunum katmanı denge sayısını kopyalamaz, OKUR; böylece sapma imkânsızlaşır. */
+const BUILD_ETIKET = {
+  hasar:     'hasar',
+  atis:      'atış',
+  menzil:    'menzil',
+  sarjor:    'şarjör',
+  hareket:   'hareket',
+  agir:      'ağır hedef',
+  uzakBonus: 'uzak mesafe',
+  reload:    'reload',
+};
+
+function yuzdeMetni(v) {
+  return (v < 0 ? '−' : '+') + Math.round(Math.abs(v) * 100) + '%';
+}
+
+/** BUILDLER kaydını okunur özete çevirir. Alan sırası motordaki yazım
+ *  sırasıdır — build'in kimliğini taşıyan bonus orada zaten önde durur. */
+export function buildOzet(buildAd) {
+  const b = BUILDLER[buildAd];
+  if (!b) return '';
+  const parca = [];
+  for (const alan of Object.keys(b)) {
+    const etiket = BUILD_ETIKET[alan];
+    if (!etiket || typeof b[alan] !== 'number') continue;
+    /* reload'da işaret ters okunur: artı değer süreyi UZATIR, yani cezadır. */
+    parca.push(alan === 'reload' && b[alan] > 0
+      ? 'reload cezası ' + yuzdeMetni(b[alan])
+      : etiket + ' ' + yuzdeMetni(b[alan]));
+  }
+  if (!parca.length) return '';
+  parca[0] = parca[0][0].toLocaleUpperCase('tr') + parca[0].slice(1);
+  return parca.join(' · ');
+}
+
 export const BUILD_SUNUM = {
-  assault:  { renk: '#e0563a', simge: '◆', ad: 'Assault',
-              ozet: 'Hasar +18% · atış +8% · reload cezası +15%' },
-  marksman: { renk: '#4a9de0', simge: '✛', ad: 'Marksman',
-              ozet: 'Menzil +15% · ağır hedef +45% · uzak mesafe +30% · atış −8%' },
-  operator: { renk: '#e0c02a', simge: '⬢', ad: 'Operator',
-              ozet: 'Şarjör +25% · reload −20% · atış +8% · hasar −8%' },
-  ranger:   { renk: '#57c15a', simge: '▲', ad: 'Ranger',
-              ozet: 'Hasar +7% · reload −10% · menzil +8% · hareket +8%' },
+  assault:  { renk: '#e0563a', simge: IKON['savas/build-assault'], ad: 'Assault',
+              ozet: buildOzet('assault') },
+  marksman: { renk: '#4a9de0', simge: IKON['savas/build-marksman'], ad: 'Marksman',
+              ozet: buildOzet('marksman') },
+  operator: { renk: '#e0c02a', simge: IKON['savas/build-operator'], ad: 'Operator',
+              ozet: buildOzet('operator') },
+  ranger:   { renk: '#57c15a', simge: IKON['savas/build-ranger'], ad: 'Ranger',
+              ozet: buildOzet('ranger') },
 };
 
 export const KURTULANLAR = [
@@ -116,17 +155,27 @@ export const CHAPTER1 = [
 ];
 
 /* ═══ ÇEVRE TEMALARI ═══
-   3D çevre modeli YOK — chapter ilerledikçe koridorun rengi, sisi ve ışığı
-   değişir. Ucuz ama okunur: oyuncu nerede olduğunu renkten anlar. */
+   Renk + sis + ışık, ARTI mekâna özgü mimari siluet (`sahne.js _mekanKur`).
+   Önce yalnız renk değişiyordu; dışarıdan bakan biri dört mekânı ayırt
+   edemedi ("hepsi aynı koridor"). Renk mekânı SÖYLER, siluet GÖSTERİR.
+   `anahtar` alanı sahnedeki mekân grubunu seçer.
+
+   Işık dili de mekâna göre değişir: `lamba` duvar lambasının rengi,
+   `rimRenk`/`rimGuc` siluet ayıran arka ışık. Gerçek ışık SAYISI artmıyor —
+   yalnız mevcut ışıkların rengi ve şiddeti temayla geliyor. */
 export const TEMALAR = [
-  { bolum: 1,  ad: 'Otopark',      zemin: 0x3d4048, duvar: 0x2a2d33, sis: 0x14161a,
-    gunes: 0xffe8c8, ortam: 0x8fa4bc, yogunluk: 2.0 },
-  { bolum: 6,  ad: 'Sokak',        zemin: 0x4a4a3e, duvar: 0x33352b, sis: 0x191b14,
-    gunes: 0xffd9a0, ortam: 0xa8bccc, yogunluk: 2.3 },
-  { bolum: 11, ad: 'Metro',        zemin: 0x2e3138, duvar: 0x212429, sis: 0x0d0f12,
-    gunes: 0xc8d8ff, ortam: 0x6a7c94, yogunluk: 1.6 },
-  { bolum: 16, ad: 'Hastane',      zemin: 0x424a48, duvar: 0x2c3433, sis: 0x121816,
-    gunes: 0xd8fff0, ortam: 0x7ea0a0, yogunluk: 1.9 },
+  { bolum: 1,  anahtar: 'otopark', ad: 'Otopark',  zemin: 0x3d4048, duvar: 0x2a2d33, sis: 0x14161a,
+    gunes: 0xffe8c8, ortam: 0x8fa4bc, yogunluk: 2.0,
+    lamba: 0xcfe6ff, rimRenk: 0xbcd8ff, rimGuc: 1.4 },   /* soğuk floresan */
+  { bolum: 6,  anahtar: 'sokak',   ad: 'Sokak',    zemin: 0x4a4a3e, duvar: 0x33352b, sis: 0x191b14,
+    gunes: 0xffd9a0, ortam: 0xa8bccc, yogunluk: 2.3,
+    lamba: 0xffb45a, rimRenk: 0xffd0a0, rimGuc: 1.2 },   /* sıcak sokak lambası */
+  { bolum: 11, anahtar: 'metro',   ad: 'Metro',    zemin: 0x2e3138, duvar: 0x212429, sis: 0x0d0f12,
+    gunes: 0xc8d8ff, ortam: 0x6a7c94, yogunluk: 1.6,
+    lamba: 0xe8f2ff, rimRenk: 0xa8c0e8, rimGuc: 1.9 },   /* sert aralıklı tavan ışığı */
+  { bolum: 16, anahtar: 'hastane', ad: 'Hastane',  zemin: 0x424a48, duvar: 0x2c3433, sis: 0x121816,
+    gunes: 0xd8fff0, ortam: 0x7ea0a0, yogunluk: 1.9,
+    lamba: 0xdaffe6, rimRenk: 0xc8ffe8, rimGuc: 1.5 },   /* kirli yeşil klinik */
 ];
 
 /** Arayüzde gösterilecek ad. motor.mjs ASCII tutar; Türkçe ad burada. */
@@ -156,6 +205,19 @@ export const KLIP_PENCERE = {
   saldiri3:      [0.25, 1.15],
   vurus:         [0.30, 1.00],
   olum3:         [0.00, 3.20],   /* 11,57 sn; gövde 3,4 sn'de kalkıyor */
+  /* Aşama 2 — ağır zombi (tank/boss) ve tabanca eylem klipleri.
+     Pencereler `tools/zombi-klip-pencere.mjs` ölçümüyle bulundu; sayılar
+     enerji tepesini ortalar. agirYuru ve agirIdle DÖNGÜ klibidir, kesilmez. */
+  agirSaldiri:   [0.20, 1.10],   /* 2,60 sn · tepe 0,60 */
+  bossSaldiri:   [1.25, 2.15],   /* 3,40 sn · tepe 1,70 */
+  agirVurus:     [0.30, 1.10],   /* 11,57 sn — kesilmezse yalnız başı görünür */
+  tabancaHasar:  [0.45, 1.25],   /* 2,77 sn · tepe 0,73 */
+  tabancaHasar2: [0.45, 1.25],   /* 2,63 sn · tepe 0,73 */
+  /* tabancaOlum: gövde 2,27 sn'de yere iniyor — kesilmezse düşen kurtulan
+     iki saniye dimdik bekliyor. İki bağımsız ölçüm (enerji tepesi 2,33 ·
+     kalça yüksekliği 2,27) aynı yeri gösterdi.
+     tabancaOlum2 KESİLMEZ: 0,03 sn'de düşüyor, tüfek ölümleriyle aynı. */
+  tabancaOlum:   [1.70, 3.67],
 };
 
 /* ═══ ZOMBİ SUNUMU ═══ */

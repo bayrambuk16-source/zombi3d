@@ -143,32 +143,40 @@ export class Sahne {
     merkez.position.set(0, 0.005, -14);
     this.sahne.add(merkez);
 
-    /* Kolon ritmi + duvar lambaları. Tek geometri/materyal paylaşılır. */
-    this.kolonMat = new THREE.MeshLambertMaterial({ color: 0x24272c });
+    /* Duvar lambaları — her mekânda var, yalnız RENGİ temayla değişir
+       (otoparkta floresan, sokakta sodyum, metroda sert beyaz, hastanede
+       klinik yeşil). Tek geometri/materyal paylaşılır. */
     this.lambaMat = new THREE.MeshBasicMaterial({ color: 0xffd9a0 });
-    const kolonGeo = new THREE.BoxGeometry(0.55, 3.4, 0.55);
     const lambaGeo = new THREE.PlaneGeometry(0.34, 0.1);
-    this.kolonlar = []; this.lambalar = [];
+    this.lambalar = [];
     for (let i = 0; i < 9; i++) {
       const z = 2 - i * 4.4;
       for (const yon of [-1, 1]) {
-        const k = new THREE.Mesh(kolonGeo, this.kolonMat);
-        k.position.set(yon * 4.55, 1.7, z);
-        /* Kolon gölgesi neredeyse görünmüyor ama gölge geçişinde her
-           karede çiziliyor — kapalı. */
-        k.castShadow = false;
-        this.sahne.add(k); this.kolonlar.push(k);
         const l = new THREE.Mesh(lambaGeo, this.lambaMat);
         l.position.set(yon * 4.26, 2.5, z);
         l.rotation.y = yon * Math.PI / 2;
         this.sahne.add(l); this.lambalar.push(l);
       }
     }
+    this._mekanKur();
     /* Rim ışığı: zombiler uzakta siyah zemine karışıyordu. Kameranın
        KARŞISINDAN gelir, yani hedefin arkasını aydınlatıp siluetini ayırır. */
     this.rim = new THREE.DirectionalLight(0xbcd8ff, 1.4);
     this.rim.position.set(0, 9, -30);
     this.sahne.add(this.rim);
+    this.rimTaban = 1.4;      /* temanın kendi değeri; vurgu buna döner */
+    this.rimVurgu = 0;        /* boss girişinde kısa süre >0 */
+
+    /* Boss zemin aurası — hedef halkasından ayrılsın diye geniş, kırmızı
+       ve soluk. Tek nesne, sahnede bir boss varken görünür. */
+    this.bossAura = new THREE.Mesh(
+      new THREE.RingGeometry(1.05, 1.55, 36),
+      new THREE.MeshBasicMaterial({ color: 0xb0402a, transparent: true,
+                                    opacity: 0.16, side: THREE.DoubleSide,
+                                    depthWrite: false }));
+    this.bossAura.rotation.x = -Math.PI / 2;
+    this.bossAura.visible = false;
+    this.sahne.add(this.bossAura);
 
     /* Hedef işaretçisi: manuel modlarda oyuncunun seçtiği zombiyi gösterir.
        Halka zeminde durur — karakterin üstüne kondurulan işaret portrait
@@ -224,6 +232,8 @@ export class Sahne {
       ['zombi-tank',    'karakter/zombi-tank.glb'],
       ['zombi-boss',    'karakter/zombi-boss.glb'],
       ['klip-tabanca',  'karakter/klip-tabanca.glb'],
+      ['klip-tabanca-ek', 'karakter/klip-tabanca-ek.glb'],
+      ['klip-agir',     'karakter/klip-agir.glb'],
     ];
     for (const [a, s] of Object.entries(SILAH_SUNUM)) liste.push([a, s.model]);
     for (let i = 0; i < liste.length; i++) {
@@ -239,12 +249,28 @@ export class Sahne {
         o.frustumCulled = true;
         if (o.geometry && !o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
         if (o.geometry && o.geometry.boundingSphere) o.geometry.boundingSphere.radius *= 2.2;
+        /* ── KARAKTER MALZEME BİRLİĞİ ──
+           Ölçüm: kurtulanların deri ve kıyafet malzemeleri `metalness 0,5`,
+           bir mesh'i `metalness 1` ile geliyordu; zombiler `roughness 0,78`.
+           Deri ve kumaş METAL DEĞİLDİR — bu, Mixamo FBX→GLB dönüşümünün
+           bilinen artefaktı. Metalness albedo'yu kısmen specular tint gibi
+           davrandırdığı için kurtulanlar "foto kesik", zombiler "oyun
+           asseti" gibi duruyordu: aynı ışığa iki farklı tepki.
+           Dokulara dokunulmuyor, yalnız PBR parametreleri eşitleniyor.
+           Silahlar KAPSAM DIŞI — onlar gerçekten metal. */
+        if (/^(kurtulan|zombi|klip-)/.test(ad)) {
+          for (const m of [].concat(o.material)) {
+            if (m.metalness !== undefined) m.metalness = 0;
+            if (m.roughness !== undefined) m.roughness = 0.85;
+          }
+        }
       });
       if (ilerleme) ilerleme((i + 1) / liste.length, ad);
     }
     /* Ölçülen pencerelere göre kes — uzun "sahne" klipleri oyunun kısa
        eylem penceresine sığmıyordu. */
-    for (const ad of ['kurtulan1', 'klip-tabanca', 'zombi-yuruyen']) {
+    for (const ad of ['kurtulan1', 'klip-tabanca', 'klip-tabanca-ek',
+                      'zombi-yuruyen', 'klip-agir']) {
       const g = this.M[ad];
       if (!g) continue;
       g.animations = g.animations.map(k => {
@@ -258,19 +284,28 @@ export class Sahne {
     /* Klip kaynakları — mesh başka dosyadan, animasyon buradan. */
     /* Tüfek + tabanca klipleri tek listede; ad çakışması yok
        (tabanca* öneki). Silah sınıfına göre seçilir. */
-    this.insanKlip = this.M.kurtulan1.animations.concat(this.M['klip-tabanca'].animations);
-    /* klip-tabanca yalnız ANİMASYON kaynağı; mesh'i hiç sahneye girmiyor.
-       Dokuları ve geometrisi GPU belleğinde tutmanın anlamı yok. */
-    this.M['klip-tabanca'].scene.traverse(o => {
-      if (!o.isMesh) return;
-      o.geometry.dispose();
-      for (const m of [].concat(o.material)) {
-        for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap'])
-          if (m[k]) m[k].dispose();
-        m.dispose();
-      }
-    });
-    this.zombiKlip = this.M['zombi-yuruyen'].animations;
+    this.insanKlip = this.M.kurtulan1.animations
+      .concat(this.M['klip-tabanca'].animations)
+      .concat(this.M['klip-tabanca-ek'].animations);
+    /* Tank ve boss, yürüyenin kliplerini paylaşıyordu: ekrandaki en iri iki
+       düşman sıradan bir yürüyenle birebir aynı hareket ediyordu. Ağır
+       klipler ortak havuza katılır, tür seçimi `_zombiKlipSec`te yapılır. */
+    this.zombiKlip = this.M['zombi-yuruyen'].animations
+      .concat(this.M['klip-agir'].animations);
+
+    /* Klip kaynağı dosyaların mesh'i hiç sahneye girmiyor; dokularını ve
+       geometrisini GPU belleğinde tutmanın anlamı yok. */
+    for (const ad of ['klip-tabanca', 'klip-tabanca-ek', 'klip-agir']) {
+      this.M[ad].scene.traverse(o => {
+        if (!o.isMesh) return;
+        o.geometry.dispose();
+        for (const m of [].concat(o.material)) {
+          for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap'])
+            if (m[k]) m[k].dispose();
+          m.dispose();
+        }
+      });
+    }
   }
 
   /* ═══ VFX havuzları ═══ */
@@ -294,6 +329,36 @@ export class Sahne {
         blending: THREE.AdditiveBlending }));
       s.scale.setScalar(0.5); s.visible = false;
       this.sahne.add(s); this.isabetler.push(s);
+    }
+
+    /* ── İZ (tracer) ──
+       Namlu alevi ile isabet işareti arasında BOŞLUK vardı: atışın nereye
+       gittiği görünmüyordu, özellikle kalabalıkta. İz o boşluğu kapatır.
+       Sprite değil KUTU: sprite kameraya döner ama uzunluğu bir yöne
+       hizalanamaz; ince bir kutu her açıdan görünür ve yönü taşır. */
+    this.izGeo = new THREE.BoxGeometry(1, 0.045, 0.045);
+    this.izler = [];
+    for (let i = 0; i < 10; i++) {
+      const m = new THREE.Mesh(this.izGeo, new THREE.MeshBasicMaterial({
+        color: 0xffe0a8, transparent: true, opacity: 0,
+        blending: THREE.AdditiveBlending, depthWrite: false }));
+      m.visible = false; m.frustumCulled = false;
+      this.sahne.add(m); this.izler.push(m);
+    }
+
+    /* ── PARLAMA (düşman hit-flash) ──
+       Materyalle yapılamaz: ölçüm, 7 zombi için yalnız 6 malzeme olduğunu
+       gösterdi — malzemeler aktörler arasında PAYLAŞILIYOR, birinin
+       emissive'ini değiştirmek hepsini parlatırdı. Bunun yerine vurulan
+       zombinin gövdesine çok kısa süreli, geniş ve eklemeli bir nokta
+       bindiriliyor. */
+    this.parlamalar = [];
+    for (let i = 0; i < 14; i++) {
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: this.noktaDoku, color: 0xfff0d2, transparent: true,
+        blending: THREE.AdditiveBlending, depthWrite: false }));
+      s.scale.setScalar(1.35); s.visible = false;
+      this.sahne.add(s); this.parlamalar.push(s);
     }
   }
 
@@ -331,6 +396,13 @@ export class Sahne {
    *  oran = vuruşun maks. cana oranı; ağır vuruş (sniper, av tüfeği yakın
    *  mesafe) daha sert düşüş verir. */
   _olumKlibi(a, oran, kafaIzin) {
+    /* Tabanca taşıyan kurtulanın kendi düşüş klipleri var; tüfek ölümüyle
+       düşerken eller olmayan bir tüfeği kavrıyordu. Havuz boş çıkarsa
+       (zombiler, tabanca kliplerini taşımayan aktörler) tüfek setine düşer. */
+    const tabancaSet = ['tabancaOlum', 'tabancaOlum2'].filter(x => a.eylem[x]);
+    if (a.tabanca && tabancaSet.length)
+      return tabancaSet[Math.floor(Math.random() * tabancaSet.length)];
+
     const secenek = ['olum', 'olum2', 'olum3', 'olumKafa']
       .filter(x => a.eylem[x] && (x !== 'olumKafa' || kafaIzin));
     if (!secenek.length) return 'olum';
@@ -338,6 +410,25 @@ export class Sahne {
        gerisi düz rastgele. */
     if (oran >= 0.9 && Math.random() < 0.5) return secenek[0];
     return secenek[Math.floor(Math.random() * secenek.length)];
+  }
+
+  /** Namludan hedefe iz çizer. `bas` dünya konumu, `hedef` savaş zombisi. */
+  _iz(bas, hedef) {
+    const m = this._vfxAl(this.izler);
+    const son = this._izSon || (this._izSon = new THREE.Vector3());
+    const yon = this._izYon || (this._izYon = new THREE.Vector3());
+    /* Gövde ortası: zemin yerine göğüs hizası, iz zombinin içinden geçsin. */
+    son.set(hedef.serit, 1.15, hedef.z);
+    yon.subVectors(son, bas);
+    const uzunluk = yon.length();
+    if (uzunluk < 0.2) { m.visible = false; return; }
+    yon.divideScalar(uzunluk);
+    m.position.copy(bas).addScaledVector(yon, uzunluk / 2);
+    m.quaternion.setFromUnitVectors(this._izX || (this._izX = new THREE.Vector3(1, 0, 0)), yon);
+    m.scale.set(uzunluk, 1, 1);
+    m.material.opacity = 0.85;
+    m.visible = true;
+    m.userData.t = 0.055;      /* çok kısa: uzun iz lazer gibi duruyor */
   }
 
   _vfxAl(havuz) {
@@ -351,9 +442,17 @@ export class Sahne {
     this.duvarMat.color.setHex(t.duvar);
     this.seritMat.color.setHex(t.gunes);
     this.seritUzakMat.color.setHex(t.gunes);
-    this.kolonMat.color.setHex(t.duvar).multiplyScalar(0.82);
-    this.lambaMat.color.setHex(t.gunes);
-    this.rim.color.setHex(t.ortam);
+    this.mekanMat.color.setHex(t.duvar).multiplyScalar(0.82);
+    this.mekanCizgiMat.color.setHex(t.gunes);
+    this.mekanRayMat.color.setHex(t.sis);
+    /* Işık dili temadan: lamba rengi ve siluet ayıran arka ışık. Gerçek
+       ışık SAYISI değişmiyor, yalnız renk ve şiddet. */
+    this.lambaMat.color.setHex(t.lamba || t.gunes);
+    this.rim.color.setHex(t.rimRenk || t.ortam);
+    this.rimTaban = t.rimGuc || 1.4;
+    this.rim.intensity = this.rimTaban;
+    /* Mekân silueti: aynı anda yalnız bir grup görünür. */
+    for (const [ad, g] of Object.entries(this.mekan)) g.visible = (ad === t.anahtar);
     this.sahne.background = new THREE.Color(t.sis);
     this.sahne.fog = new THREE.Fog(t.sis, 15, 46);
     this.gunes.color.setHex(t.gunes);
@@ -382,6 +481,149 @@ export class Sahne {
              altAktif: null, ustAktif: null, kilit: 0, ustKilit: 0 };
   }
 
+  /** Dört mekânın mimari silueti.
+   *
+   *  Sorun: tema yalnız RENK değiştiriyordu. Dışarıdan bakan biri dört
+   *  mekânı ayırt edemedi — "hepsi aynı koridor". Renk mekânı söyler,
+   *  siluet gösterir; göz siluetten okur.
+   *
+   *  Maliyet kuralı: her parça InstancedMesh, tek geometri + tek materyal.
+   *  Dört mekân da kurulur ama aynı anda YALNIZ BİRİ görünür (`tema()`).
+   *  Toplam ek çizim çağrısı mekân başına 3-4.
+   *
+   *  Ölçüler koridora göre: duvar iç yüzü x=±4,5 · tavan y≈3,6 ·
+   *  oynanan derinlik z = +2 … −46.
+   */
+  _mekanKur() {
+    this.mekan = {};
+    /* Ortak materyaller: gövde (temayla koyulaşır), çizgi (zemin işaretleri),
+       oyuk (kapı/pencere boşluğu — sisin rengine yakın koyu). */
+    this.mekanMat  = new THREE.MeshLambertMaterial({ color: 0x24272c });
+    this.mekanCizgiMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff, transparent: true, opacity: 0.055 });
+    this.mekanOyukMat = new THREE.MeshBasicMaterial({ color: 0x0b0d10 });
+    /* Ray/travers için AYRI ve koyu materyal. Gövde materyali kullanılınca
+       raylar zeminden parlak çıkıyor ve koridorun tam ortasında zombilerle
+       yarışan bir merdiven oluyordu. Ray bir VURGU değil, zeminde bir OYUK
+       gibi okunmalı: zemin renginden koyu. */
+    this.mekanRayMat = new THREE.MeshLambertMaterial({ color: 0x14161a });
+
+    /** Bir InstancedMesh'i verilen dönüşümlerle doldurup gruba ekler. */
+    const ekle = (grup, geo, mat, yerlesim) => {
+      const m = new THREE.InstancedMesh(geo, mat, yerlesim.length);
+      const d = new THREE.Object3D();
+      yerlesim.forEach((y, i) => {
+        d.position.set(y[0], y[1], y[2]);
+        d.rotation.set(y[3] || 0, y[4] || 0, y[5] || 0);
+        d.scale.set(y[6] === undefined ? 1 : y[6], y[7] === undefined ? 1 : y[7],
+                    y[8] === undefined ? 1 : y[8]);
+        d.updateMatrix();
+        m.setMatrixAt(i, d.matrix);
+      });
+      m.instanceMatrix.needsUpdate = true;
+      m.castShadow = false; m.receiveShadow = false;
+      m.frustumCulled = false;      /* koridor boyu uzun, kutu yanıltıyor */
+      grup.add(m);
+      return m;
+    };
+    const yatay = -Math.PI / 2;     /* PlaneGeometry'yi zemine yatırır */
+
+    /* ── OTOPARK: kolon + beton kiriş + park çizgileri ── */
+    {
+      const g = new THREE.Group();
+      const kolonZ = [], kirisZ = [], cizgi = [];
+      for (let i = 0; i < 11; i++) {
+        const z = 2 - i * 4.4;
+        kolonZ.push([-4.55, 1.7, z], [4.55, 1.7, z]);
+        /* Kiriş UÇLARI, koridoru geçen tam kiriş DEĞİL. İlk denemede
+           kirişler 9,4 birim genişti ve koridoru enine kesiyordu: kamera
+           alçak olduğu için tavandaki her şey oyun alanının önüne düşüyor
+           ve zombileri kapatıyordu. Okunabilirlik mimariden önce gelir. */
+        kirisZ.push([-3.85, 3.3, z], [3.85, 3.3, z]);
+        /* Park yeri çizgileri: koridora DİK, iki yanda. */
+        cizgi.push([-3.5, 0.012, z - 1.1, yatay], [3.5, 0.012, z - 1.1, yatay]);
+      }
+      ekle(g, new THREE.BoxGeometry(0.55, 3.4, 0.55), this.mekanMat, kolonZ);
+      ekle(g, new THREE.BoxGeometry(1.7, 0.3, 0.42), this.mekanMat, kirisZ);
+      ekle(g, new THREE.PlaneGeometry(1.9, 0.07), this.mekanCizgiMat, cizgi);
+      this.mekan.otopark = g;
+    }
+
+    /* ── SOKAK: kaldırım + cephe silueti + yol şeritleri ── */
+    {
+      const g = new THREE.Group();
+      /* Kaldırım: koridor boyunca iki uzun blok. */
+      ekle(g, new THREE.BoxGeometry(0.62, 0.24, 62), this.mekanMat,
+           [[-4.1, 0.12, -14], [4.1, 0.12, -14]]);
+      /* Cephe blokları duvarın ARKASINDA ve daha yüksek: 3,6 m duvarın
+         üstünden görünüp gökyüzü çizgisini kırarlar. Yükseklik ritmi
+         sabit bir diziden geliyor, rastgele değil — her açılışta aynı
+         şehir silueti çıksın. */
+      const yukseklik = [7.2, 4.6, 9.0, 5.8, 6.4, 8.2, 5.0, 7.8, 6.0, 4.2, 8.6];
+      const cephe = [];
+      yukseklik.forEach((h, i) => {
+        const z = 1 - i * 5.6;
+        for (const yon of [-1, 1])
+          cephe.push([yon * 7.4, h / 2, z, 0, 0, 0, 1, h / 6, 1]);
+      });
+      ekle(g, new THREE.BoxGeometry(3.4, 6, 4.6), this.mekanMat, cephe);
+      /* Yol orta şeridi: kesikli. */
+      const serit = [];
+      for (let i = 0; i < 16; i++) serit.push([0, 0.013, 1 - i * 3.4, yatay]);
+      ekle(g, new THREE.PlaneGeometry(0.16, 1.7), this.mekanCizgiMat, serit);
+      this.mekan.sokak = g;
+    }
+
+    /* ── METRO: ray + travers + peron + tünel kemeri ── */
+    {
+      const g = new THREE.Group();
+      ekle(g, new THREE.BoxGeometry(0.11, 0.09, 62), this.mekanRayMat,
+           [[-0.78, 0.05, -14], [0.78, 0.05, -14]]);
+      /* TRAVERS YOK — bilinçli. Denendi ve çıkarıldı: traversler öldürme
+         koridorunun tam ortasına bir merdiven çiziyor, göz zombiler yerine
+         onu takip ediyordu. Sıklaştırmak da koyultmak da meşguliyeti
+         çözmedi; kaldırmak çözdü. İki ray + peron + kaburga metro kimliğini
+         zaten taşıyor, üstelik zemini boş bırakarak. */
+      /* Peron: raydan yüksek, yanlarda. Zemini böler, koridor "tünel" olur. */
+      ekle(g, new THREE.BoxGeometry(2.0, 0.55, 62), this.mekanMat,
+           [[-3.5, 0.28, -14], [3.5, 0.28, -14]]);
+      /* Tünel kaburgaları — otoparktaki kirişle aynı ders: tam genişlik
+         koridoru kesiyor ve zombileri kapatıyordu. Yalnız kenar uçları
+         kaldı; tünel hissini peron + ray zaten taşıyor. */
+      const kaburga = [];
+      for (let i = 0; i < 13; i++) {
+        const z = 1 - i * 3.8;
+        kaburga.push([-3.9, 3.38, z], [3.9, 3.38, z]);
+      }
+      ekle(g, new THREE.BoxGeometry(1.9, 0.36, 0.34), this.mekanMat, kaburga);
+      this.mekan.metro = g;
+    }
+
+    /* ── HASTANE: kapı oyukları + duvar alt bandı + karo zemin ── */
+    {
+      const g = new THREE.Group();
+      const kapi = [];
+      for (let i = 0; i < 11; i++) {
+        const z = 0 - i * 5.2;
+        kapi.push([-4.46, 1.05, z, 0, Math.PI / 2, 0],
+                  [4.46, 1.05, z, 0, -Math.PI / 2, 0]);
+      }
+      ekle(g, new THREE.PlaneGeometry(1.15, 2.1), this.mekanOyukMat, kapi);
+      /* Duvar alt bandı — klinik koridorların imzası. */
+      ekle(g, new THREE.BoxGeometry(0.07, 0.42, 62), this.mekanMat,
+           [[-4.46, 0.5, -14], [4.46, 0.5, -14]]);
+      /* Karo zemin: enine derz + iki boyuna derz. Zemin ölçek kazanıyor. */
+      const karo = [];
+      for (let i = 0; i < 26; i++) karo.push([0, 0.012, 1 - i * 2.4, yatay]);
+      ekle(g, new THREE.PlaneGeometry(9.2, 0.045), this.mekanCizgiMat, karo);
+      ekle(g, new THREE.PlaneGeometry(0.045, 62), this.mekanCizgiMat,
+           [[-2.3, 0.012, -14, yatay], [2.3, 0.012, -14, yatay]]);
+      this.mekan.hastane = g;
+    }
+
+    for (const g of Object.values(this.mekan)) { g.visible = false; this.sahne.add(g); }
+  }
+
   /** Silahı sağ ele bağlar. Ölçek SABİT ÇARPANLA verilmez: Mixamo el kemiği
    *  0,01 dünya ölçeğinde, Meshy modelleri de her biri başka ölçekte.
    *  Önce bağla, sonra DÜNYA kutusunu ölç, gerçek boya oranla. */
@@ -402,6 +644,29 @@ export class Sahne {
     s.scale.setScalar((SILAH_SUNUM[silahAd].boy) / dunyaBoy);
     const elOlcek = el.getWorldScale(new THREE.Vector3()).x || 1;
     s.position.set(0.02 / elOlcek, 0.05 / elOlcek, 0.02 / elOlcek);
+
+    /* ── NAMLU UCU ──
+       Namlu alevi eskiden sabit bir noktaya çiziliyordu (serit+0,3 · 1,42 ·
+       z−0,55). Ölçüm: alev revolverde 25 cm, keskin nişancıda 67 cm sapıyordu
+       — tüfeğin yarısı kadar. Sabit nokta ayrıca kurtulanın hedefe dönüşünü
+       de yok sayıyordu.
+       Çözüm: ucu MODELİN KENDİ geometrisinden bul, silaha çocuk olarak bağla.
+       Böylece el kemiğini, gövde dönüşünü ve ölçeği kendiliğinden izler.
+       Yönelim varsayılmıyor: en uzun eksenin iki ucu da ölçülüp atış yönüne
+       (−z) bakan seçiliyor. */
+    aktor.kok.updateWorldMatrix(true, true);
+    const sonKutu = new THREE.Box3().setFromObject(s);
+    const sb = sonKutu.getSize(new THREE.Vector3());
+    const eksen = sb.x >= sb.y && sb.x >= sb.z ? 'x' : sb.y >= sb.z ? 'y' : 'z';
+    const merkez = sonKutu.getCenter(new THREE.Vector3());
+    const ucA = merkez.clone(); ucA[eksen] = sonKutu.min[eksen];
+    const ucB = merkez.clone(); ucB[eksen] = sonKutu.max[eksen];
+    const ucDunya = ucA.z < ucB.z ? ucA : ucB;
+    const namlu = new THREE.Object3D();
+    namlu.position.copy(s.worldToLocal(ucDunya.clone()));
+    s.add(namlu);
+    s.userData.namlu = namlu;
+
     aktor.silah = s;
     aktor.silahAd = silahAd;
     return s;
@@ -493,9 +758,14 @@ export class Sahne {
     a.kok.rotation.y = 0;
     a.mixer.stopAllAction();
     a.aktif = null;
-    /* Koşucunun kendi koşu klibi var; hızlandırılmış yürüyüş "hızlı yürüyen"
-       gibi duruyordu, tür farkı silüetten okunmuyordu. */
+    /* ── Yürüyüş klibi türe göre ──
+       Koşucunun kendi koşu klibi var; hızlandırılmış yürüyüş "hızlı yürüyen"
+       gibi duruyordu, tür farkı silüetten okunmuyordu. Aynı sorun tank ve
+       boss'ta daha büyüktü: ekrandaki en iri iki düşman sıradan bir
+       yürüyenle birebir aynı adımı atıyordu. Ölçek büyütmek yetmiyor —
+       göz hareketten okuyor. */
     if (tur === 'kosucu' && a.eylem.kos) a.yuruKlip = 'kos';
+    else if ((tur === 'tank' || tur === 'boss') && a.eylem.agirYuru) a.yuruKlip = 'agirYuru';
     else {
       /* Üç yürüyüş varyasyonu arasında dağıt. */
       const secenek = ['yuru', 'yuru2', 'yuru3'].filter(x => a.eylem[x]);
@@ -505,9 +775,15 @@ export class Sahne {
     /* ±%12 tempo sapması: aynı türden zombiler bile aynı adımı atmasın. */
     const sapma = 1 + (((this._sayac * 37) % 25) / 100 - 0.12);
     a.yuruHiz = Math.max(0.3, Math.min(2.6, ZOMBILER[tur].hiz / refHiz * sapma));
-    /* Saldırı varyasyonu: üç klip arasında id'ye göre dağıt — tekdüzelik
-       "zombiler hep aynı şeyi yapıyor" hissi veriyordu. */
-    a.saldiriKlip = ['saldiri', 'saldiri2', 'saldiri3'][this._sayac++ % 3];
+    /* Saldırı varyasyonu: klipler arasında id'ye göre dağıt — tekdüzelik
+       "zombiler hep aynı şeyi yapıyor" hissi veriyordu. Tank kafa/yumruk
+       darbesi, boss tekme atar: ağır düşman ısırmaz, savurur. */
+    const saldiriSecenek = (tur === 'boss')  ? ['bossSaldiri', 'agirSaldiri']
+                         : (tur === 'tank')  ? ['agirSaldiri', 'agirSaldiri2']
+                         : ['saldiri', 'saldiri2', 'saldiri3'];
+    const uygun = saldiriSecenek.filter(x => a.eylem[x]);
+    a.saldiriKlip = uygun.length ? uygun[this._sayac++ % uygun.length]
+                                 : ['saldiri', 'saldiri2', 'saldiri3'][this._sayac++ % 3];
     if (!a.eylem[a.saldiriKlip]) a.saldiriKlip = 'saldiri';
     this.oynat(a, a.yuruKlip, { hiz: a.yuruHiz });
     /* Klibin faz kaydırması: aynı anda doğan öbek lockstep yürümesin. */
@@ -539,6 +815,9 @@ export class Sahne {
     for (const o of savas.olaylar) {
       if (o.tip === 'dogum') {
         this.zombiAktor.set(o.zombi.id, this._zombiAl(o.zombi.tur));
+        /* Boss girişi: arka ışık kısa süre güçlenir. Kükreme SESİ zaten
+           doğumda çalıyor (ses.js TUR_DOGUM); bu onun görsel karşılığı. */
+        if (o.zombi.tur === 'boss') this.rimVurgu = 1.4;
       } else if (o.tip === 'ates') {
         const a = this.kurtulanAktor[o.kurtulan.i];
         if (a) {
@@ -555,7 +834,16 @@ export class Sahne {
           a.ustKilit = asure / ahiz;
           const f = this._vfxAl(this.alevler);
           f.visible = true; f.material.opacity = 1; f.userData.t = 0.05;
-          f.position.set(o.kurtulan.serit + 0.3, 1.42, o.kurtulan.z - 0.55);
+          /* Alev namlu ucundan çıkar. Namlu nesnesi silaha bağlı olduğu için
+             el kemiğini ve gövde dönüşünü izler; sabit konum ikisini de yok
+             sayıyordu (bkz. _silahBagla). Silah yoksa eski sabit noktaya
+             düşülür — alevin hiç çıkmaması daha kötü. */
+          const nam = a.silah && a.silah.userData.namlu;
+          if (nam) nam.getWorldPosition(f.position);
+          else f.position.set(o.kurtulan.serit + 0.3, 1.42, o.kurtulan.z - 0.55);
+          /* İz: namludan hedefe. Hedef yoksa iz de yok — havaya çizilen
+             bir iz atışın nereye gittiğini yanlış söyler. */
+          if (o.hedef && !o.hedef.olu) this._iz(f.position, o.hedef);
         }
       } else if (o.tip === 'reload') {
         const a = this.kurtulanAktor[o.kurtulan.i];
@@ -573,7 +861,19 @@ export class Sahne {
         const s = this._vfxAl(this.isabetler);
         s.visible = true; s.material.opacity = 0.95; s.userData.t = 0.26;
         s.position.set(o.zombi.serit, 1.1, o.zombi.z);
-        if (z && z.aktif !== 'olum') { this.oynat(z, 'vurus', { dongu: false, gecis: 0.07 }); z.kilit = 0.4; }
+        /* Düşman parlaması: isabet işaretinden ayrı, daha geniş ve çok daha
+           kısa. Vuruşun DÜŞMANA değdiğini söyler, havada bir yere değil. */
+        const p = this._vfxAl(this.parlamalar);
+        p.visible = true; p.material.opacity = 0.7; p.userData.t = 0.075;
+        p.position.set(o.zombi.serit, 1.2, o.zombi.z);
+        if (z && z.aktif !== 'olum') {
+          /* Ağır türler kendi vuruş tepkisini verir: tank ve boss sıradan
+             bir yürüyen gibi irkilmemeli, ağırlığını taşımalı. */
+          const vk = ((z.tur === 'tank' || z.tur === 'boss') && z.eylem.agirVurus)
+            ? 'agirVurus' : 'vurus';
+          this.oynat(z, vk, { dongu: false, gecis: 0.07 });
+          z.kilit = 0.4;
+        }
       } else if (o.tip === 'olum') {
         const z = this.zombiAktor.get(o.zombi.id);
         if (z) {
@@ -598,9 +898,14 @@ export class Sahne {
           z.kilit = ssure / shiz;
         }
         const k = this.kurtulanAktor[o.kurtulan.i];
-        if (k && !o.kurtulan.olu && k.ust.hasar) {
-          this.kanal(k, 'ust', 'hasar', { dongu: false, gecis: 0.05, hiz: 1.3 });
-          k.ustKilit = 0.3;
+        if (k && !o.kurtulan.olu) {
+          /* Tabanca taşıyan kendi vuruş tepkisini kullanır; tüfek klibi
+             kolları bir anlığına tüfek duruşuna çekiyordu. */
+          const hk = (k.tabanca && k.ust.tabancaHasar) ? 'tabancaHasar' : 'hasar';
+          if (k.ust[hk]) {
+            this.kanal(k, 'ust', hk, { dongu: false, gecis: 0.05, hiz: 1.3 });
+            k.ustKilit = 0.3;
+          }
         }
       } else if (o.tip === 'kurtulanOldu') {
         const a = this.kurtulanAktor[o.kurtulan.i];
@@ -654,15 +959,42 @@ export class Sahne {
       a.mixer.update(dt);
     });
 
+    let bossZ = null;
     for (const z of savas.zombiler) {
       const a = this.zombiAktor.get(z.id);
       if (!a || z.olu) continue;
       a.kok.position.set(z.serit, 0, z.z);
+      if (z.tur === 'boss') bossZ = a.kok.position;
       a.kilit -= dt;
       const yk = a.yuruKlip || 'yuru';
       if (a.kilit <= 0 && a.aktif !== yk && z.yuruyor !== false)
         this.oynat(a, yk, { hiz: a.yuruHiz || 1 });
       a.mixer.update(dt);
+    }
+
+    /* ── Boss sunumu ──
+       Boss zaten yürüyenden %65 büyük (ZOMBI_SUNUM ölçek 1,65) ve doğumda
+       kendi kükreme sesi çalıyor. Eksik olan görsel vurguydu: kalabalıkta
+       hangisinin boss olduğu ölçekten geç anlaşılıyordu.
+       Zemin aurası hedef halkasıyla karışmasın diye AYRI okunur: daha
+       geniş, kırmızı ve çok daha soluk. */
+    if (this.bossAura) {
+      if (bossZ) {
+        this.bossAura.visible = true;
+        this.bossAura.position.set(bossZ.x, 0.03, bossZ.z);
+        /* Yavaş nabız: sabit halka sahne dekoru gibi duruyor, nabız
+           "burada bir şey var" diyor. */
+        this.bossNabiz = (this.bossNabiz || 0) + dt;
+        const n = 1 + Math.sin(this.bossNabiz * 2.4) * 0.06;
+        this.bossAura.scale.setScalar(n);
+        this.bossAura.material.opacity = 0.16 + Math.sin(this.bossNabiz * 2.4) * 0.05;
+      } else this.bossAura.visible = false;
+    }
+    /* Doğum vurgusu: boss sahneye girerken arka ışık kısa süre güçlenir,
+       sonra temanın kendi değerine döner. Yeni ışık EKLENMİYOR. */
+    if (this.rimVurgu > 0) {
+      this.rimVurgu = Math.max(0, this.rimVurgu - dt);
+      this.rim.intensity = this.rimTaban * (1 + 0.55 * (this.rimVurgu / 1.4));
     }
 
     /* ölüler: yere göm ve havuza iade et */
@@ -684,6 +1016,18 @@ export class Sahne {
       s.userData.t -= dt;
       s.material.opacity = Math.max(0, s.userData.t / 0.26);
       if (s.userData.t <= 0) s.visible = false;
+    }
+    for (const m of this.izler) {
+      if (!m.visible) continue;
+      m.userData.t -= dt;
+      m.material.opacity = Math.max(0, 0.85 * (m.userData.t / 0.055));
+      if (m.userData.t <= 0) m.visible = false;
+    }
+    for (const p of this.parlamalar) {
+      if (!p.visible) continue;
+      p.userData.t -= dt;
+      p.material.opacity = Math.max(0, 0.7 * (p.userData.t / 0.075));
+      if (p.userData.t <= 0) p.visible = false;
     }
 
     this._kamera(savas, dt);

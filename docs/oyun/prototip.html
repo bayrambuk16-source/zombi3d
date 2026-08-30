@@ -23,8 +23,23 @@
     background:linear-gradient(#0c0e11e6,#0c0e1100);pointer-events:none}
   #bolumBilgi{font-size:15px;font-weight:700;letter-spacing:.09em}
   #temaAd{font-size:10px;color:var(--sonuk);letter-spacing:.16em;margin-top:2px}
-  #dalgaDis{margin-top:7px;height:3px;background:#ffffff14;border-radius:2px;overflow:hidden}
+  /* Bölüm ilerlemesi 3 px'ti ve 390 px ekranda fark edilmiyordu: 5 px'e
+     çıkarıldı, sönük bir iç çerçeve eklendi ki dolu ile boş ayrışsın. */
+  #dalgaDis{margin-top:7px;height:5px;background:#ffffff10;border-radius:3px;
+            overflow:hidden;box-shadow:inset 0 0 0 1px #ffffff14}
   #dalgaCubuk{height:100%;width:0;background:var(--vurgu);transition:width .25s}
+  /* BOSS CAN BARI — yalnız sahnede boss varken görünür.
+     Boss bölümünde tek işaret başlıktaki "★ BOSS" yazısıydı; savaş
+     sırasında kimse başlığa bakmıyor, boss'un ne kadar kaldığı hiç
+     okunmuyordu. Bar bölüm ilerlemesinden AYRI renkte ve daha kalın:
+     ikisi de üst şeritte durduğu için karışmamaları şart. */
+  #bossDis{margin-top:5px;height:9px;background:#00000055;border-radius:3px;
+           overflow:hidden;box-shadow:inset 0 0 0 1px #b0402a66;display:none}
+  #bossDis.acik{display:block}
+  #bossCubuk{height:100%;width:100%;transition:width .18s;
+             background:linear-gradient(90deg,#e0563a,#b0402a)}
+  #bossAd{font-size:9px;letter-spacing:.18em;color:#e0866a;margin-top:3px;display:none}
+  #bossAd.acik{display:block}
 
   /* ── sağ kenar düğmeleri ── */
   #yanMenu{position:fixed;right:9px;top:58px;display:flex;flex-direction:column;gap:6px}
@@ -62,7 +77,8 @@
   .kartUst{display:flex;justify-content:space-between;align-items:center;
     font-size:9px;font-weight:700;letter-spacing:.06em;padding-left:4px}
   .kart .build{font-size:11px}
-  .ikonKutu{position:relative;height:40px;margin:2px 0}
+  /* 40 px'ti; 390 px ekranda silah ikonu okunmuyordu. %30 buyutuldu. */
+  .ikonKutu{position:relative;height:52px;margin:2px 0}
   .kart .ikon{width:100%;height:100%;object-fit:contain;display:block}
   /* Dairesel reload göstergesi: --p 0..1 arası JS'ten gelir. */
   .kart.reload .ikonKutu::before{content:'';position:absolute;inset:2px;
@@ -190,6 +206,8 @@
   <div id="bolumBilgi">BÖLÜM 1-1</div>
   <div id="temaAd">OTOPARK</div>
   <div id="dalgaDis"><div id="dalgaCubuk"></div></div>
+  <div id="bossDis"><div id="bossCubuk"></div></div>
+  <div id="bossAd">BOSS</div>
 </div>
 
 <div id="yanMenu">

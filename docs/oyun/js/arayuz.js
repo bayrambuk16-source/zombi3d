@@ -28,6 +28,9 @@ export class Arayuz {
       dalga:  document.getElementById('dalgaCubuk'),
       bilgi:  document.getElementById('bolumBilgi'),
       tema:   document.getElementById('temaAd'),
+      bossDis:   document.getElementById('bossDis'),
+      bossCubuk: document.getElementById('bossCubuk'),
+      bossAd:    document.getElementById('bossAd'),
       sayac:  document.getElementById('sayac'),
       mod:    document.getElementById('btnMod'),
     };
@@ -149,6 +152,22 @@ export class Arayuz {
     this.d.dalga.style.width = ((1 - kalan / Math.max(1, toplam)) * 100) + '%';
     this.d.bilgi.textContent = 'BÖLÜM 1-' + bolum + (bolum % 5 === 0 ? '  ★ BOSS' : '');
     this.d.tema.textContent = tema.ad.toUpperCase() + '  ·  KALAN ' + kalan;
+
+    /* BOSS CAN BARI — yalnız sahnede canlı boss varken.
+       Boss bölümünde tek işaret başlıktaki "★ BOSS" yazısıydı ve savaş
+       sırasında kimse başlığa bakmıyor: boss'un ne kadar kaldığı hiç
+       okunmuyordu. Bar boss SAHNEYE GİRİNCE açılır, ölünce kapanır —
+       bölüm numarasına bağlamak boss daha gelmeden bar göstermek olurdu. */
+    const boss = savas.zombiler.find(z => z.tur === 'boss' && !z.olu);
+    if (boss && this.d.bossDis) {
+      this.d.bossDis.classList.add('acik');
+      this.d.bossAd.classList.add('acik');
+      this.d.bossCubuk.style.width =
+        Math.max(0, Math.min(1, boss.can / Math.max(1, boss.maxCan))) * 100 + '%';
+    } else if (this.d.bossDis) {
+      this.d.bossDis.classList.remove('acik');
+      this.d.bossAd.classList.remove('acik');
+    }
   }
 
   /* Mod rozeti: halka + kısa ad.

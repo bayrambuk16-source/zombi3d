@@ -256,12 +256,25 @@ export class Sahne {
            bilinen artefaktı. Metalness albedo'yu kısmen specular tint gibi
            davrandırdığı için kurtulanlar "foto kesik", zombiler "oyun
            asseti" gibi duruyordu: aynı ışığa iki farklı tepki.
-           Dokulara dokunulmuyor, yalnız PBR parametreleri eşitleniyor.
-           Silahlar KAPSAM DIŞI — onlar gerçekten metal. */
+           Dokulara dokunulmuyor, yalnız PBR parametreleri eşitleniyor. */
         if (/^(kurtulan|zombi|klip-)/.test(ad)) {
           for (const m of [].concat(o.material)) {
             if (m.metalness !== undefined) m.metalness = 0;
             if (m.roughness !== undefined) m.roughness = 0.85;
+          }
+        } else if (SILAH_SUNUM[ad]) {
+          /* SİLAHLAR — önce "onlar gerçekten metal" diye kapsam dışı
+             bırakılmıştı. O gerekçe ancak ÇEVRE HARİTASI varsa geçerli:
+             yansıtacak bir şeyi olmayan `metalness 1` malzeme siyah render
+             edilir. Sahnede envMap yok ve silahlar hem elde hem envanter
+             ikonunda koyu lekeye dönüyordu — ölçüldü: ortalama ikon
+             parlaklığı 80/255, revolver 57, av tüfeği 50.
+             Ucuz ve doğru çözüm metalness'i düşürmek; silah, ışıkla
+             aydınlanan koyu bir gövde olur. PMREM/çevre haritası mobil
+             bütçeye ek yük getirir ve bu kadarı için gereksiz. */
+          for (const m of [].concat(o.material)) {
+            if (m.metalness !== undefined) m.metalness = Math.min(m.metalness, 0.35);
+            if (m.roughness !== undefined) m.roughness = Math.max(m.roughness, 0.45);
           }
         }
       });
@@ -410,6 +423,69 @@ export class Sahne {
        gerisi düz rastgele. */
     if (oran >= 0.9 && Math.random() < 0.5) return secenek[0];
     return secenek[Math.floor(Math.random() * secenek.length)];
+  }
+
+  /** Kalabalıkta üst üste binmeyi azaltır — YALNIZ GÖRSEL.
+   *
+   *  Motor 1B'dir ve `serit` (yanal x) motorda yalnız ATANIR, hiç OKUNMAZ;
+   *  burada verilen kayma hiçbir denge sayısını etkilemez. Bu yüzden
+   *  düzeltme motora değil sahneye yazıldı: ölçüm zinciri (K0) dokunulmadan
+   *  kalır.
+   *
+   *  Sorun: beş şerit var ama zombiler yürürken aynı derinlikte toplanıyor;
+   *  aynı z bandında yan yana düşenler birbirini örtüyor ve kalabalıkta
+   *  tür farkı okunmaz oluyor. En çok kaybeden tank ve boss: küçük
+   *  zombiler önlerine geçince tamamen kayboluyorlar.
+   *
+   *  Yöntem: derinlik bandına göre tek geçişli gevşetme. Ağır olan az,
+   *  hafif olan çok kaçar — böylece kalabalık boss'un ETRAFINDAN akar,
+   *  boss yerinde kalır.
+   */
+  _kalabalikAyir(savas, dt) {
+    const liste = this._ayirmaListe || (this._ayirmaListe = []);
+    liste.length = 0;
+    for (const z of savas.zombiler) {
+      const a = this.zombiAktor.get(z.id);
+      if (!a || z.olu) continue;
+      if (a.kayma === undefined) a.kayma = 0;
+      a.hedefKayma = 0;
+      /* Ağırlık ölçekten gelir: boss 1,65 · tank 1,28 · yürüyen 1,00. */
+      liste.push({ a, z: z.z, x: z.serit + a.kayma,
+                   agirlik: (ZOMBI_SUNUM[z.tur] || {}).olcek || 1 });
+    }
+    if (liste.length < 2) return;
+    liste.sort((p, q) => p.z - q.z);
+
+    /* Sıralı olduğu için her aktör yalnız KENDİNDEN SONRAKİ birkaç komşuyla
+       karşılaştırılır; z farkı eşiği aşınca döngü kırılır. n² değil. */
+    const DERINLIK = 1.35;    /* bu kadar yakın z'ler aynı bandda sayılır */
+    const AYRIM = 0.95;       /* bandda istenen asgari yanal ayrım */
+    for (let i = 0; i < liste.length; i++) {
+      const p = liste[i];
+      for (let j = i + 1; j < liste.length; j++) {
+        const q = liste[j];
+        if (q.z - p.z > DERINLIK) break;
+        const d = q.x - p.x;
+        const mesafe = Math.abs(d);
+        if (mesafe >= AYRIM) continue;
+        /* Tam üst üste ise yönü id'den türet: rastgele kullanmak
+           kareler arası titreme yaratır. */
+        const yon = mesafe < 0.001 ? ((p.a.uid || i) % 2 ? 1 : -1) : Math.sign(d);
+        const eksik = (AYRIM - mesafe) * 0.5;
+        const toplam = p.agirlik + q.agirlik;
+        /* Ağır olan az kaçar: payı KARŞI tarafın ağırlığından gelir. */
+        p.a.hedefKayma -= yon * eksik * (q.agirlik / toplam) * 2;
+        q.a.hedefKayma += yon * eksik * (p.agirlik / toplam) * 2;
+      }
+    }
+
+    /* Yumuşatma ve sınır. Anında uygulamak zombileri ışınlıyor; kayma
+       koridor dışına taşmamalı. */
+    const SINIR = 1.45;
+    for (const p of liste) {
+      const hedef = Math.max(-SINIR, Math.min(SINIR, p.a.kayma + p.a.hedefKayma));
+      p.a.kayma += (hedef - p.a.kayma) * Math.min(1, dt * 6);
+    }
   }
 
   /** Namludan hedefe iz çizer. `bas` dünya konumu, `hedef` savaş zombisi. */
@@ -750,6 +826,9 @@ export class Sahne {
     const a = havuz.pop() || this._aktorYap(model, this.zombiKlip, 1);
     a.model = model;
     a.tur = tur;
+    /* Havuzdan gelen aktör eski yanal kaymasını taşımamalı: yeni doğan
+       zombi koridorun kenarında belirip sonra ortaya kayardı. */
+    a.kayma = 0; a.hedefKayma = 0;
     const s = ZOMBI_SUNUM[tur];
     a.kok.scale.setScalar(s.olcek);
     a.kok.visible = true;
@@ -959,11 +1038,14 @@ export class Sahne {
       a.mixer.update(dt);
     });
 
+    /* Kalabalık ayrımı ÖNCE hesaplanır, konumlar sonra yazılır. */
+    this._kalabalikAyir(savas, dt);
+
     let bossZ = null;
     for (const z of savas.zombiler) {
       const a = this.zombiAktor.get(z.id);
       if (!a || z.olu) continue;
-      a.kok.position.set(z.serit, 0, z.z);
+      a.kok.position.set(z.serit + (a.kayma || 0), 0, z.z);
       if (z.tur === 'boss') bossZ = a.kok.position;
       a.kilit -= dt;
       const yk = a.yuruKlip || 'yuru';
